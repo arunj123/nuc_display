@@ -75,7 +75,6 @@ set(SRC_FILES
     src/modules/image_loader.cpp
     src/modules/text_renderer.cpp
     src/modules/video_decoder.cpp
-    src/modules/audio_player.cpp
     src/modules/container_reader.cpp
     src/modules/weather_module.cpp
     src/modules/config_module.cpp
@@ -118,4 +117,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_link_options(--coverage)
 endif()
 
+
 add_subdirectory(tests)
+
+# Screenshot Tool
+add_executable(screenshot_tool src/screenshot_tool.cpp)

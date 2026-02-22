@@ -24,6 +24,8 @@ public:
     AVCodecParameters* get_codec_params(int stream_index) const;
     std::expected<AVPacket*, MediaError> read_packet();
 
+    void rewind();
+
 private:
     AVFormatContext* format_ctx_ = nullptr;
     AVPacket* packet_ = nullptr;

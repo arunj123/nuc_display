@@ -26,14 +26,20 @@
 using namespace nuc_display;
 
 std::atomic<bool> g_running{true};
+std::atomic<bool> g_screenshot_requested{false};
 
 void sigint_handler(int) {
     g_running = false;
 }
 
+void sigusr1_handler(int) {
+    g_screenshot_requested = true;
+}
+
 int main() {
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGTERM, sigint_handler);
+    std::signal(SIGUSR1, sigusr1_handler);
 
     std::cout << "Starting NUC Display Engine (C++23 Modernized)...\n";
 
@@ -49,12 +55,12 @@ int main() {
 
     // 1.5 Load Configuration
     auto config_module = std::make_unique<modules::ConfigModule>();
-    auto config_res = config_module->load_or_create_config("config.json");
-    if (!config_res) {
+    auto app_config_res = config_module->load_or_create_config("config.json");
+    if (!app_config_res) {
         std::cerr << "[Core] Fatal Config Error! Cannot proceed.\n";
         return 1;
     }
-    auto app_config = config_res.value();
+    auto app_config = app_config_res.value();
 
     // 2. Initialize Thread Pool
     utils::ThreadPool thread_pool(4);
@@ -96,10 +102,20 @@ int main() {
     // Video Decoding (Hardware Accelerated)
     auto video_decoder = std::make_unique<modules::VideoDecoder>();
     video_decoder->init_vaapi(display->drm_fd());
-
+    
     // Audio Playback
-    auto audio_player = std::make_unique<modules::AudioPlayer>();
-    // audio_player->init_alsa("default"); // ALSA device initialization
+    video_decoder->set_audio_enabled(app_config.video.audio_enabled);
+    if (app_config.video.audio_enabled) {
+        video_decoder->init_audio("default");
+    }
+    
+    if (app_config.video.enabled) {
+        if (!app_config.video.playlists.empty()) {
+            video_decoder->load_playlist(app_config.video.playlists);
+        } else {
+            std::cerr << "[Core] No videos defined in playlist config.\n";
+        }
+    }
 
     // Container Reader
     auto container_reader = std::make_unique<modules::ContainerReader>();
@@ -125,7 +141,6 @@ int main() {
     auto last_news_update = std::chrono::steady_clock::now();
     auto program_start_time = std::chrono::steady_clock::now();
 
-    float color_offset = 0.0f;
 
     std::cout << "--- Starting main loop ---\n";
 
@@ -225,13 +240,28 @@ int main() {
         stock_module->render(*renderer, *text_renderer, render_time_sec);
         news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
 
-        // Take a screenshot once for verification after APIs resolve
-        if (!screenshot_taken && render_time_sec > 4.0) {
-            if (auto cap_res = screenshot_module->capture(display->width(), display->height()); cap_res) {
-                screenshot_module->save("debug_weather.png");
-                screenshot_taken = true;
-                std::cout << "[Core] Debug screenshot saved.\n";
+        // Hardware Accelerated Video Playback (Zero-Copy)
+        if (app_config.video.enabled) {
+            bool playing = video_decoder->render(*renderer, display->egl_display(), 
+                                                 app_config.video.src_x, app_config.video.src_y,
+                                                 app_config.video.src_w, app_config.video.src_h,
+                                                 app_config.video.x, app_config.video.y, 
+                                                 app_config.video.w, app_config.video.h, 
+                                                 render_time_sec);
+            if (!playing) {
+                // Loop to the next video in the playlist
+                video_decoder->next_video();
             }
+        }
+        // ALSA is now processed iteratively inside video_decoder->render() via packet interleaving
+
+        // Manual screenshot trigger via SIGUSR1
+        if (g_screenshot_requested) {
+            if (auto cap_res = screenshot_module->capture(display->width(), display->height()); cap_res) {
+                screenshot_module->save("manual_screenshot.png");
+                std::cout << "[Core] Manual screenshot saved to manual_screenshot.png\n";
+            }
+            g_screenshot_requested = false;
         }
 
         // --- SWAP BUFFERS ---

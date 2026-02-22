@@ -205,8 +205,9 @@ std::expected<void, DisplayError> DisplayManager::init_egl() {
 
     if (egl_display_ == EGL_NO_DISPLAY) return std::unexpected(DisplayError::EglDisplayFailed);
 
-    if (!eglInitialize(egl_display_, nullptr, nullptr)) return std::unexpected(DisplayError::EglInitializeFailed);
-
+    if (!eglInitialize(egl_display_, nullptr, nullptr)) {
+        return std::unexpected(DisplayError::EglInitializeFailed);
+    }
     eglBindAPI(EGL_OPENGL_ES_API);
 
     EGLint config_attribs[] = {

@@ -28,6 +28,7 @@ add_executable(test_modules
     ../src/modules/text_renderer.cpp
     ../src/modules/weather_module.cpp
     ../src/modules/stock_module.cpp
+    ../src/modules/config_module.cpp
     ../src/core/renderer.cpp
 )
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})
@@ -47,8 +48,8 @@ add_test(NAME ModuleTests COMMAND test_modules)
 add_executable(test_video
     video_test.cpp
     ../src/modules/video_decoder.cpp
-    ../src/modules/audio_player.cpp
     ../src/modules/container_reader.cpp
+    ../src/core/renderer.cpp
 )
 target_include_directories(test_video PRIVATE ${TEST_INCLUDE_DIRS})
 target_link_libraries(test_video 
@@ -59,6 +60,8 @@ target_link_libraries(test_video
     ${VA_LIBRARIES}
     ${VA_DRM_LIBRARIES}
     ${ALSA_LIBRARIES}
+    ${GLESv2_LIBRARIES}
+    EGL
 )
 
 # Copy sample video to build directory for testing

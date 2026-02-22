@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "modules/video_decoder.hpp"
-#include "modules/audio_player.hpp"
 #include "modules/container_reader.hpp"
 #include <iostream>
 #include <fcntl.h>
@@ -35,27 +34,6 @@ TEST(VideoDecoderTest, LoadAndProcess) {
         }
     }
     close(drm_fd);
-}
-
-TEST(AudioPlayerTest, LoadAndProcess) {
-    AudioPlayer player;
-    auto init_res = player.init_alsa("default");
-    if (!init_res) {
-        GTEST_SKIP() << "ALSA 'default' device not available";
-    }
-
-    auto result = player.load("sample.mp4");
-    if (!result.has_value()) {
-        GTEST_SKIP() << "Failed to load sample.mp4 for audio (might not contain an audio stream)";
-    } else {
-        // Decode a few audio frames
-        for (int i = 0; i < 5; ++i) {
-            auto proc_res = player.process(i * 0.033);
-            if (!proc_res.has_value()) {
-                break;
-            }
-        }
-    }
 }
 
 TEST(ContainerReaderTest, OpenValidFile) {

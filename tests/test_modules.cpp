@@ -75,3 +75,92 @@ TEST(StockModuleTest, InvalidSymbolHandled) {
     // Check that we don't have crash and state is still valid
     SUCCEED();
 }
+
+#include "modules/config_module.hpp"
+#include <nlohmann/json.hpp>
+
+class ConfigModuleTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        test_file_ = "test_config_" + std::to_string(std::rand()) + ".json";
+    }
+
+    void TearDown() override {
+        std::remove(test_file_.c_str());
+    }
+
+    std::string test_file_;
+};
+
+TEST_F(ConfigModuleTest, CreateDefaultWhenFileMissing) {
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    
+    // Video config defaults Check
+    EXPECT_TRUE(result->video.enabled);
+    EXPECT_FALSE(result->video.audio_enabled);
+    EXPECT_EQ(result->video.playlists[0], "tests/sample.mp4");
+    EXPECT_FLOAT_EQ(result->video.x, 0.70f);
+    EXPECT_FLOAT_EQ(result->video.src_w, 1.0f);
+}
+
+TEST_F(ConfigModuleTest, ParseValidConfig) {
+    nlohmann::json j = {
+        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", {{{"symbol", "AAPL"}, {"name", "Apple"}, {"currency_symbol", "$"}},
+                    {{"symbol", "GOOG"}, {"name", "Alphabet"}, {"currency_symbol", "$"}}}},
+        {"video", {
+            {"enabled", false},
+            {"audio_enabled", true},
+            {"playlists", {"custom_video1.mp4", "custom_video2.mp4"}},
+            {"x", 0.1f}, {"y", 0.2f}, {"w", 0.3f}, {"h", 0.4f},
+            {"src_x", 0.1f}, {"src_y", 0.1f}, {"src_w", 0.8f}, {"src_h", 0.8f}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->location.address, "London, UK");
+    EXPECT_EQ(result->stocks.size(), 2);
+    EXPECT_FALSE(result->video.enabled);
+    EXPECT_TRUE(result->video.audio_enabled);
+    EXPECT_EQ(result->video.playlists.size(), 2);
+    EXPECT_EQ(result->video.playlists[0], "custom_video1.mp4");
+    EXPECT_EQ(result->video.playlists[1], "custom_video2.mp4");
+    EXPECT_FLOAT_EQ(result->video.x, 0.1f);
+    EXPECT_FLOAT_EQ(result->video.src_x, 0.1f);
+    EXPECT_FLOAT_EQ(result->video.src_w, 0.8f);
+}
+
+TEST_F(ConfigModuleTest, HandleCorruptedJson) {
+    std::ofstream out(test_file_);
+    out << "{ invalid_json: ";
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), ConfigError::ParseError);
+}
+
+TEST_F(ConfigModuleTest, HandleMissingVideoNode) {
+    nlohmann::json j = {
+        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", nlohmann::json::array()}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    // Should fallback to default video config and save
+    EXPECT_TRUE(result->video.enabled);
+    EXPECT_EQ(result->video.playlists[0], "tests/sample.mp4");
+}

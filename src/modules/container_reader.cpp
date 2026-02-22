@@ -66,4 +66,10 @@ std::expected<AVPacket*, MediaError> ContainerReader::read_packet() {
     return this->packet_;
 }
 
+void ContainerReader::rewind() {
+    if (this->format_ctx_) {
+        av_seek_frame(this->format_ctx_, -1, 0, AVSEEK_FLAG_BACKWARD);
+    }
+}
+
 } // namespace nuc_display::modules

@@ -20,9 +20,18 @@ struct LocationConfig {
     float lon;
 };
 
+struct VideoConfig {
+    bool enabled;
+    bool audio_enabled;
+    std::vector<std::string> playlists;
+    float x, y, w, h;
+    float src_x, src_y, src_w, src_h; // The "from" region (normalized 0.0 to 1.0)
+};
+
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
+    VideoConfig video;
 };
 
 class ConfigModule {

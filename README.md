@@ -8,7 +8,8 @@ To create a zero-overhead, ultra-low resource dashboard that utilizes native Int
 ## Design Philosophy
 - **Bare Metal Performance:** Direct interaction with Linux Kernel subsystems (`DRM`, `KMS`, `GBM`, `EGL`).
 - **Minimal Dependencies:** Avoid heavy abstraction layers (like SDL2, Qt, X11) to maximize resource efficiency.
-- **Hardware Acceleration:** Leverage Intel Quick Sync (VAAPI) for video decoding and Intel UHD Graphics for UI rendering.
+- **Hardware Acceleration:** Leverage Intel Quick Sync (VAAPI) for zero-copy video decoding directly into OpenGL textures via DMA-BUFs.
+- **Audio Integration:** Synchronized ALSA audio playback directly from the video container.
 - **Resilience:** Built-in handling for display hotplugging and graceful hardware teardown.
 
 ## Current Tech Stack
@@ -58,13 +59,26 @@ You can configure your location for weather and sunrise/sunset times, as well as
 ```
 *Note: If `lat` and `lon` are 0.0, the application will automatically call the Open-Meteo Geocoding API to resolve the address string.*
 
-## Debug Screenshots
-The application includes a built-in headless screenshot module using `glReadPixels`. To capture a screenshot of the current DRM/GBM framebuffer render state, the application automatically dumps a `debug_weather.png` file to the working directory ~4 seconds after execution once the API calls have resolved and rendering has commenced.
+## Standalone Screenshot Tool
+The application includes a built-in headless screenshot module using `glReadPixels`. To capture a screenshot manually at any time without restarting the app, a separate utility is provided:
+
+```bash
+# Build the tool
+cmake --build build --target screenshot_tool
+
+# Run the tool to trigger a screenshot on the running nuc_display process
+./build/screenshot_tool
+```
+This tool sends a `SIGUSR1` signal to the `nuc_display` process, which triggers a capture of the current framebuffer to `manual_screenshot.png`.
 
 ## Advanced Features
 - **GPU Weather Visualizations:** Real-time 3D volumetric Fractional Brownian Motion (fBM) clouds.
-- **Day/Night Cycle:** The weather shader respects the actual Sunrise/Sunset times from your geographical location, rendering a bright Sun or a crescent Moon with stars.
-- **Dynamic Warnings:** Color-coded layout warnings for High UV Index and Glatteis (Black Ice) based on the temperature + precipitation correlation.
-- **Multi-layered Rain & Snow Animations:** Complex falling speeds with varying transparency depths using native GLSL rather than looping PNGs.
-- **Hybrid News Ticker:** Implements vertical and horizontal state-machine logic to cleanly display the latest Tech headlines from NewsAPI.
-- **Resilient Offline Architecture:** If networking fails, the dashboard renders offline placeholders ("Waiting for data...") and automatically recovers once connectivity is restored.
+- **Hardware-Accelerated Video Playback:** Supports a `playlists` array in `config.json` with multi-video looping and hardware-accurate NV12 color correction.
+- **Integrated Audio:** Decodes and writes interleaved audio samples to the ALSA `default` device synchronously with the video.
+- **Top-Right Corner Overlay:** Video playback is anchored to the top-right corner to avoid obscuring dashboard data.
+- **Zero-Copy DRM Pipeline:** Frames are passed from the VAAPI decoder to EGL via DMA-BUFs, bypassing CPU memory copies.
+- **Day/Night Cycle:** The weather shader respects the actual Sunrise/Sunset times from your geographical location.
+- **Dynamic Warnings:** Color-coded layout warnings for High UV Index and Glatteis (Black Ice).
+- **Multi-layered Rain & Snow Animations:** Complex falling speeds using native GLSL.
+- **Hybrid News Ticker:** Implements vertical and horizontal state-machine logic.
+- **Resilient Offline Architecture:** Recovers automatically once connectivity is restored.

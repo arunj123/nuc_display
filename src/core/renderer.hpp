@@ -28,6 +28,7 @@ public:
     
     int width() const { return width_; }
     int height() const { return height_; }
+    GLuint vbo() const { return vbo_; }
 
     
     // Orientation correction
@@ -44,10 +45,11 @@ public:
     void draw_line_strip(const std::vector<float>& points, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f, float line_width = 2.0f);
     void draw_animated_weather(int weather_code, float x, float y, float w, float h, float time_sec, bool is_night = false);
 
-private:
-    void update_matrix();
     GLuint compile_shader(GLenum type, const char* source);
     GLuint link_program(GLuint vertex_shader, GLuint fragment_shader);
+
+private:
+    void update_matrix();
 
     GLuint program_;
     GLuint position_loc_;

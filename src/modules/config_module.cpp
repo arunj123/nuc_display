@@ -81,6 +81,20 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     }
     j["stocks"] = stocks;
 
+    j["video"] = {
+        {"enabled", config.video.enabled},
+        {"audio_enabled", config.video.audio_enabled},
+        {"playlists", config.video.playlists},
+        {"x", config.video.x},
+        {"y", config.video.y},
+        {"w", config.video.w},
+        {"h", config.video.h}
+    };
+    j["video"]["src_x"] = config.video.src_x;
+    j["video"]["src_y"] = config.video.src_y;
+    j["video"]["src_w"] = config.video.src_w;
+    j["video"]["src_h"] = config.video.src_h;
+
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -122,6 +136,20 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
             {"ABEA.F", "Alphabet", "€"},
             {"TL0.F", "Tesla", "€"}
         };
+
+        // Default Video Config
+        config.video.enabled = true;
+        config.video.audio_enabled = false;
+        config.video.playlists = {"tests/sample.mp4"};
+        config.video.x = 0.70f;
+        config.video.y = 0.03f;
+        config.video.w = 0.25f;
+        config.video.h = 0.20f;
+        config.video.src_x = 0.0f;
+        config.video.src_y = 0.0f;
+        config.video.src_w = 1.0f;
+        config.video.src_h = 1.0f;
+
         needs_save = true;
     } else {
         try {
@@ -159,6 +187,46 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 needs_save = true; // Repair missing array
             }
             
+            if (j.contains("video")) {
+                const auto& video_json = j["video"];
+                config.video.enabled = video_json.value("enabled", true);
+                config.video.audio_enabled = video_json.value("audio_enabled", false);
+                
+                if (video_json.contains("playlists") && video_json["playlists"].is_array()) {
+                    for (const auto& item : video_json["playlists"]) {
+                        if (item.is_string()) config.video.playlists.push_back(item);
+                    }
+                } else {
+                    config.video.playlists = {"tests/sample.mp4"};
+                    needs_save = true;
+                }
+                
+                config.video.x = video_json.value("x", 0.70f);
+                config.video.y = video_json.value("y", 0.03f);
+                config.video.w = video_json.value("w", 0.25f);
+                config.video.h = video_json.value("h", 0.20f);
+                config.video.src_x = video_json.value("src_x", 0.0f);
+                config.video.src_y = video_json.value("src_y", 0.0f);
+                config.video.src_w = video_json.value("src_w", 1.0f);
+                config.video.src_h = video_json.value("src_h", 1.0f);
+            } else {
+                config.video.enabled = true;
+                config.video.audio_enabled = false;
+                config.video.playlists = {"tests/sample.mp4"};
+                config.video.x = 0.70f;
+                config.video.y = 0.03f;
+                config.video.w = 0.25f;
+                config.video.h = 0.20f;
+                config.video.src_x = 0.0f;
+                config.video.src_y = 0.0f;
+                config.video.src_w = 1.0f;
+                config.video.src_h = 1.0f;
+                needs_save = true;
+            }
+            
+        } catch (const nlohmann::json::parse_error& e) {
+            std::cerr << "Config Parse Error: " << e.what() << "\n";
+            return std::unexpected(ConfigError::ParseError);
         } catch (const std::exception& e) {
             std::cerr << "Config Parse Error: " << e.what() << "\n";
             return std::unexpected(ConfigError::ParseError);
