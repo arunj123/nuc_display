@@ -89,7 +89,7 @@ void VideoDecoder::next_video() {
 }
 
 std::expected<void, MediaError> VideoDecoder::load(const std::string& filepath) {
-    std::cout << "VideoDecoder: Loading " << filepath << "\n";
+    std::cout << "VideoDecoder: Loading " << filepath << std::endl;
     this->cleanup_codec();
     
     auto open_res = this->container_.open(filepath);
@@ -153,7 +153,7 @@ std::expected<void, MediaError> VideoDecoder::load(const std::string& filepath) 
         }
     }
     
-    std::cout << "VideoDecoder: Codec opened.\n";
+    std::cout << "VideoDecoder: Codec opened." << std::endl;
     return {};
 }
 
