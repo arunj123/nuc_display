@@ -25,8 +25,8 @@ void NewsModule::update_headlines() {
 
     std::string readBuffer;
     
-    // Google News RSS - Top Stories (English)
-    std::string url = "https://news.google.com/rss?hl=en&gl=US&ceid=US:en";
+    // Google News RSS - Stock Market / Finance (English)
+    std::string url = "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en";
     
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);

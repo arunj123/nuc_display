@@ -3,9 +3,14 @@
 
 namespace nuc_display::modules {
 
-ContainerReader::ContainerReader() {}
-
+ContainerReader::ContainerReader() {
+    this->packet_ = av_packet_alloc();
+}
+    
 ContainerReader::~ContainerReader() {
+    if (this->packet_) {
+        av_packet_free(&this->packet_);
+    }
     if (this->format_ctx_) {
         avformat_close_input(&this->format_ctx_);
     }
@@ -23,6 +28,42 @@ std::expected<void, MediaError> ContainerReader::open(const std::string& filepat
 
     std::cout << "ContainerReader: Found " << this->format_ctx_->nb_streams << " streams.\n";
     return {};
+}
+
+int ContainerReader::find_video_stream() const {
+    if (!this->format_ctx_) return -1;
+    for (unsigned int i = 0; i < this->format_ctx_->nb_streams; i++) {
+        if (this->format_ctx_->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int ContainerReader::find_audio_stream() const {
+    if (!this->format_ctx_) return -1;
+    for (unsigned int i = 0; i < this->format_ctx_->nb_streams; i++) {
+        if (this->format_ctx_->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+AVCodecParameters* ContainerReader::get_codec_params(int stream_index) const {
+    if (!this->format_ctx_ || stream_index < 0 || stream_index >= static_cast<int>(this->format_ctx_->nb_streams)) {
+        return nullptr;
+    }
+    return this->format_ctx_->streams[stream_index]->codecpar;
+}
+
+std::expected<AVPacket*, MediaError> ContainerReader::read_packet() {
+    if (!this->format_ctx_ || !this->packet_) return std::unexpected(MediaError::InternalError);
+    av_packet_unref(this->packet_);
+    if (av_read_frame(this->format_ctx_, this->packet_) < 0) {
+        return std::unexpected(MediaError::InternalError);
+    }
+    return this->packet_;
 }
 
 } // namespace nuc_display::modules

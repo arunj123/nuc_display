@@ -19,10 +19,14 @@ public:
 
     std::expected<void, MediaError> open(const std::string& filepath);
     
-    // Future: Method to extract streams and feed them to VideoDecoder/AudioPlayer
-    
+    int find_video_stream() const;
+    int find_audio_stream() const;
+    AVCodecParameters* get_codec_params(int stream_index) const;
+    std::expected<AVPacket*, MediaError> read_packet();
+
 private:
     AVFormatContext* format_ctx_ = nullptr;
+    AVPacket* packet_ = nullptr;
 };
 
 } // namespace nuc_display::modules

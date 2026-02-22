@@ -42,3 +42,26 @@ target_link_libraries(test_modules
     nlohmann_json::nlohmann_json
 )
 add_test(NAME ModuleTests COMMAND test_modules)
+
+# --- Video Decoding Tests ---
+add_executable(test_video
+    video_test.cpp
+    ../src/modules/video_decoder.cpp
+    ../src/modules/audio_player.cpp
+    ../src/modules/container_reader.cpp
+)
+target_include_directories(test_video PRIVATE ${TEST_INCLUDE_DIRS})
+target_link_libraries(test_video 
+    GTest::gtest_main
+    ${AVFORMAT_LIBRARIES}
+    ${AVCODEC_LIBRARIES}
+    ${AVUTIL_LIBRARIES}
+    ${VA_LIBRARIES}
+    ${VA_DRM_LIBRARIES}
+    ${ALSA_LIBRARIES}
+)
+
+# Copy sample video to build directory for testing
+configure_file(sample.mp4 sample.mp4 COPYONLY)
+
+add_test(NAME VideoTests COMMAND test_video)
