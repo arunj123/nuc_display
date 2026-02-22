@@ -21,6 +21,7 @@ jobs:
           libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev pkg-config \
           libva-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev \
           libasound2-dev libfreetype-dev libharfbuzz-dev libjpeg-dev libpng-dev \
+          libcurl4-openssl-dev \
           gcovr
 
     - name: Configure CMake
