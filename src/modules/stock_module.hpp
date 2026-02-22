@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <expected>
+#include <map>
+#include <mutex>
 
 namespace nuc_display::core { class Renderer; }
 namespace nuc_display::modules { class TextRenderer; }
@@ -56,6 +58,11 @@ private:
     
     size_t current_index_ = 0;
     double last_switch_time_ = 0.0;
+    
+    std::map<std::string, bool> icon_attempted_;
+    std::map<std::string, uint32_t> icon_textures_;
+
+    std::mutex mutex_;
 };
 
 } // namespace nuc_display::modules

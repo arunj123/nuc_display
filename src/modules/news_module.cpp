@@ -120,6 +120,28 @@ void NewsModule::update_headlines() {
     }
 }
 
+static std::vector<std::string> wrap_news_text(const std::string& text, size_t max_chars) {
+    std::vector<std::string> lines;
+    std::istringstream words(text);
+    std::string word;
+    std::string current_line;
+
+    while (words >> word) {
+        if (current_line.empty()) {
+            current_line = word;
+        } else if (current_line.length() + 1 + word.length() <= max_chars) {
+            current_line += " " + word;
+        } else {
+            lines.push_back(current_line);
+            current_line = word;
+        }
+    }
+    if (!current_line.empty()) {
+        lines.push_back(current_line);
+    }
+    return lines;
+}
+
 void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
                         float x, float y, float w, float h, double time_sec) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -131,14 +153,6 @@ void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
         renderer.draw_text(glyphs.value(), x, y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
     
-    // We will display just ONE headline at a time in the center of the news area.
-    // Time-based state machine layout:
-    // Cycle length: 12 seconds per headline
-    // 0.0 - 1.0s: Slide up from bottom (fade in)
-    // 1.0 - 3.0s: Pause
-    // 3.0 - 11.0s: Horizontal scroll (if wider than w) or just Pause (if fits)
-    // 11.0 - 12.0s: Slide up to top (fade out)
-    
     const double cycle_duration = 12.0;
     int headline_idx = static_cast<int>(time_sec / cycle_duration) % headlines_.size();
     double phase_time = std::fmod(time_sec, cycle_duration);
@@ -147,61 +161,73 @@ void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
     std::string prefix = "- ";
     std::string full_text = prefix + item.title + " (" + item.source + ")";
     
-    // Calculate total text width
-    text_renderer.set_pixel_size(0, 24); // Slightly larger font for single-item display
-    auto glyphs_opt = text_renderer.shape_text(full_text);
-    if (!glyphs_opt) return;
+    // Wrap the text dynamically (approx 52 chars fits nicely in left column at 24px)
+    auto lines = wrap_news_text(full_text, 54);
     
-    float text_width = 0.0f;
-    for (const auto& g : glyphs_opt.value()) {
-        text_width += g.advance / (float)renderer.width();
-    }
+    float line_height = 0.035f;
+    float block_h = lines.size() * line_height;
     
-    // Y-axis animation
-    float center_y = y + h * 0.5f;
-    float current_y = center_y;
+    // Y-axis animation parameters
+    float center_y_base = y + (h - block_h) * 0.5f + 0.02f; // +0.02f offset for header space
+    float current_y = center_y_base;
     float alpha = 1.0f;
     
-    if (phase_time < 1.0) {
-        // Slide in
-        float t = phase_time; // 0 to 1
-        t = 1.0f - std::pow(1.0f - t, 3.0f); // ease out cubic
-        current_y = center_y + (1.0f - t) * (h * 0.4f);
-        alpha = t;
-    } else if (phase_time > 11.0) {
-        // Slide out
-        float t = phase_time - 11.0; // 0 to 1
-        t = t * t * t; // ease in cubic
-        current_y = center_y - t * (h * 0.4f);
-        alpha = 1.0f - t;
-    }
-    
-    // X-axis animation (marquee)
-    float current_x = x;
-    if (text_width > w) {
-        if (phase_time > 3.0 && phase_time <= 11.0) {
-            float scroll_progress = (phase_time - 3.0) / 8.0; // 0 to 1
-            // ease in out for marquee
-            scroll_progress = scroll_progress * scroll_progress * (3.0f - 2.0f * scroll_progress); 
-            float max_scroll = text_width - w + 0.05f; // scroll past a bit
-            current_x = x - (scroll_progress * max_scroll);
+    // If block is extremely tall, vertically scroll it during the 3s - 11s phase
+    if (block_h > h - 0.03f) {
+        float max_scroll = block_h - (h - 0.05f); // scroll until bottom is visible
+        if (phase_time > 2.0 && phase_time <= 11.0) {
+            float scroll_progress = (phase_time - 2.0) / 9.0;
+            current_y = y + 0.02f - (scroll_progress * max_scroll);
         } else if (phase_time > 11.0) {
-            // Keep it fully scrolled during slide out
-            current_x = x - (text_width - w + 0.05f);
+            current_y = y + 0.02f - max_scroll;
+        } else {
+            current_y = y + 0.02f;
+        }
+        
+        // Slide in / out effects stacked mathematically on the scroll offset
+        if (phase_time < 1.0) {
+            float t = phase_time;
+            t = 1.0f - std::pow(1.0f - t, 3.0f);
+            current_y = (y + 0.02f) + (1.0f - t) * (h * 0.4f);
+            alpha = t;
+        } else if (phase_time > 11.0) {
+            float t = phase_time - 11.0;
+            t = t * t * t;
+            current_y = (y + 0.02f - max_scroll) - t * (h * 0.4f);
+            alpha = 1.0f - t;
+        }
+    } else {
+        // Fits perfectly, just slide in, pause, slide out
+        if (phase_time < 1.0) {
+            float t = phase_time; 
+            t = 1.0f - std::pow(1.0f - t, 3.0f); 
+            current_y = center_y_base + (1.0f - t) * (h * 0.4f);
+            alpha = t;
+        } else if (phase_time > 11.0) {
+            float t = phase_time - 11.0; 
+            t = t * t * t; 
+            current_y = center_y_base - t * (h * 0.4f);
+            alpha = 1.0f - t;
         }
     }
     
-    // Enable scissor cut-off for the text so it doesn't overflow left/right column bounds
+    // Scissor to prevent text vertically overlapping the weather / stock sections
     glEnable(GL_SCISSOR_TEST);
-    // Scissor expects x, y, w, h in viewport coordinates (bottom-left origin)
     int vp_x = static_cast<int>(x * renderer.width());
-    // Renderer Y is top-down (0 = top), GL Scissor Y is bottom-up (0 = bottom)
+    // Move scissor down slightly to avoid cutting the "Headlines" header
     int vp_y = static_cast<int>((1.0f - (y + h)) * renderer.height());
     int vp_w = static_cast<int>(w * renderer.width());
-    int vp_h = static_cast<int>(h * renderer.height());
+    int vp_h = static_cast<int>((h - 0.02f) * renderer.height()); // Scissor only the content area
     glScissor(vp_x, vp_y, vp_w, vp_h);
 
-    renderer.draw_text(glyphs_opt.value(), current_x, current_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
+    text_renderer.set_pixel_size(0, 24); 
+    float draw_y = current_y;
+    for (const auto& line : lines) {
+        if (auto glyphs_opt = text_renderer.shape_text(line)) {
+            renderer.draw_text(glyphs_opt.value(), x, draw_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
+        }
+        draw_y += line_height;
+    }
     
     glDisable(GL_SCISSOR_TEST);
 }

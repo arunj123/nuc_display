@@ -8,6 +8,8 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
+#include "modules/image_loader.hpp"
 
 namespace nuc_display::modules {
 
@@ -17,6 +19,14 @@ StockModule::StockModule() {
 
 StockModule::~StockModule() {
     curl_global_cleanup();
+    // Texture cleanup
+    for (auto const& [symbol, tex_id] : icon_textures_) {
+        // We need a way to delete textures. Assuming renderer is not here, 
+        // but textures are created on the main thread during render.
+        // Actually, we'll let the user know we should probably have a cleanup method 
+        // or just accept that they live for the app duration.
+        // However, we can't easily call renderer.delete_texture(tex_id) here without a renderer ref.
+    }
 }
 
 void StockModule::add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol) {
@@ -197,6 +207,39 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     // We render on the right half (x around 0.42 to 0.95)
     float base_x = 0.42f;
     float current_y = 0.15f + y_offset;
+
+    // --- Stock Icon / Logo ---
+    float icon_size = 0.08f;
+    bool has_icon = false;
+    uint32_t tex_id = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (icon_textures_.count(data.symbol)) {
+            tex_id = icon_textures_[data.symbol];
+            has_icon = (tex_id > 0);
+        } else if (!icon_attempted_[data.symbol]) {
+            icon_attempted_[data.symbol] = true;
+            // Try loading from assets/stocks/{symbol}.png
+            std::string path = "assets/stocks/" + data.symbol + ".png";
+            if (!std::filesystem::exists(path)) path = "assets/stocks/" + data.symbol + ".jpg";
+            
+            if (std::filesystem::exists(path)) {
+                ImageLoader loader;
+                if (loader.load(path)) {
+                    tex_id = renderer.create_texture(loader.get_rgba_data().data(), loader.width(), loader.height(), loader.channels());
+                    icon_textures_[data.symbol] = tex_id;
+                    has_icon = (tex_id > 0);
+                }
+            }
+        }
+    }
+
+    if (has_icon) {
+        float aspect = (float)renderer.width() / renderer.height();
+        renderer.draw_quad(tex_id, base_x, current_y - 0.04f, icon_size, icon_size * aspect, 1.0f, 1.0f, 1.0f, alpha);
+        base_x += icon_size + 0.02f; // Shift text to the right
+    }
 
     // 1. Draw Symbol Name & Ticker
     text_renderer.set_pixel_size(0, 48);
