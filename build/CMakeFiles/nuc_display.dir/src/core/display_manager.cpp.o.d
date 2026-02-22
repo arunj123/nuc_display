@@ -228,4 +228,5 @@ CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.o: \
  /usr/include/linux/falloc.h /usr/include/x86_64-linux-gnu/bits/stat.h \
  /usr/include/x86_64-linux-gnu/bits/struct_stat.h /usr/include/poll.h \
  /usr/include/x86_64-linux-gnu/sys/poll.h \
- /usr/include/x86_64-linux-gnu/bits/poll.h
+ /usr/include/x86_64-linux-gnu/bits/poll.h /usr/include/c++/13/cstring \
+ /usr/include/string.h /usr/include/strings.h

@@ -107,6 +107,7 @@ CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.o: /home/arun/projects/n
   /usr/include/c++/13/cstdint \
   /usr/include/c++/13/cstdio \
   /usr/include/c++/13/cstdlib \
+  /usr/include/c++/13/cstring \
   /usr/include/c++/13/cwchar \
   /usr/include/c++/13/cwctype \
   /usr/include/c++/13/debug/assertions.h \
@@ -166,6 +167,8 @@ CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.o: /home/arun/projects/n
   /usr/include/stdint.h \
   /usr/include/stdio.h \
   /usr/include/stdlib.h \
+  /usr/include/string.h \
+  /usr/include/strings.h \
   /usr/include/syscall.h \
   /usr/include/time.h \
   /usr/include/unistd.h \
@@ -2302,12 +2305,6 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/c++/13/locale:
 
-/usr/include/strings.h:
-
-/usr/include/signal.h:
-
-/usr/include/c++/13/iomanip:
-
 /usr/include/c++/13/functional:
 
 /usr/include/c++/13/format:
@@ -2434,12 +2431,6 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /home/arun/projects/nuc_display/src/modules/container_reader.hpp:
 
-/usr/include/x86_64-linux-gnu/libavutil/channel_layout.h:
-
-/usr/include/string.h:
-
-/home/arun/projects/nuc_display/src/modules/audio_player.hpp:
-
 /usr/include/c++/13/stdlib.h:
 
 /usr/include/alsa/hwdep.h:
@@ -2483,6 +2474,18 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 /usr/include/x86_64-linux-gnu/c++/13/bits/c++config.h:
 
 /usr/include/x86_64-linux-gnu/c++/13/bits/c++allocator.h:
+
+/usr/include/x86_64-linux-gnu/bits/xopen_lim.h:
+
+/usr/include/x86_64-linux-gnu/c++/13/bits/atomic_word.h:
+
+/usr/include/x86_64-linux-gnu/bits/wordsize.h:
+
+/usr/include/va/va_enc_mpeg2.h:
+
+/usr/include/harfbuzz/hb-unicode.h:
+
+/usr/include/x86_64-linux-gnu/bits/wctype-wchar.h:
 
 /usr/include/c++/13/new:
 
@@ -2550,6 +2553,8 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/c++/13/bits/postypes.h:
 
+/usr/include/c++/13/cstring:
+
 /usr/include/c++/13/bits/align.h:
 
 /usr/include/x86_64-linux-gnu/bits/waitflags.h:
@@ -2599,10 +2604,6 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 /home/arun/projects/nuc_display/src/modules/container_reader.cpp:
 
 /usr/include/syscall.h:
-
-/usr/include/c++/13/numbers:
-
-/usr/include/c++/13/bits/ostream.tcc:
 
 /usr/include/c++/13/bits/functexcept.h:
 
@@ -2826,12 +2827,6 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
 
-/usr/include/va/va_enc_mpeg2.h:
-
-/usr/include/harfbuzz/hb-unicode.h:
-
-/usr/include/x86_64-linux-gnu/bits/wctype-wchar.h:
-
 /usr/include/c++/13/backward/auto_ptr.h:
 
 /usr/include/c++/13/bits/ranges_cmp.h:
@@ -2892,6 +2887,10 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/c++/13/bits/ios_base.h:
 
+/usr/include/c++/13/bits/ostream.tcc:
+
+/usr/include/c++/13/numbers:
+
 /usr/include/libpng16/pngconf.h:
 
 /usr/include/x86_64-linux-gnu/bits/signal_ext.h:
@@ -2934,13 +2933,15 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/c++/13/pstl/glue_memory_defs.h:
 
+/usr/include/signal.h:
+
+/usr/include/c++/13/iomanip:
+
+/usr/include/strings.h:
+
 /usr/include/x86_64-linux-gnu/bits/struct_rwlock.h:
 
 /usr/include/c++/13/pstl/pstl_config.h:
-
-/usr/include/x86_64-linux-gnu/c++/13/bits/atomic_word.h:
-
-/usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
 /usr/include/c++/13/stdexcept:
 
@@ -3044,6 +3045,12 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 
 /usr/include/stdlib.h:
 
+/usr/include/x86_64-linux-gnu/libavutil/channel_layout.h:
+
+/home/arun/projects/nuc_display/src/modules/audio_player.hpp:
+
+/usr/include/string.h:
+
 /usr/include/x86_64-linux-gnu/libavutil/hwcontext.h:
 
 /usr/include/unistd.h:
@@ -3135,8 +3142,6 @@ CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o: /home/arun/projects/
 /usr/include/x86_64-linux-gnu/bits/sigstksz.h:
 
 /usr/include/x86_64-linux-gnu/bits/stat.h:
-
-/usr/include/x86_64-linux-gnu/bits/xopen_lim.h:
 
 /usr/include/x86_64-linux-gnu/bits/timex.h:
 
