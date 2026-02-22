@@ -290,6 +290,7 @@ bool DisplayManager::page_flip() {
     uint32_t fb;
     if (drmModeAddFB(drm_fd_, mode_.hdisplay, mode_.vdisplay, 24, 32, pitch, handle, &fb)) {
         std::cerr << "Failed to create DRM Framebuffer: " << std::strerror(errno) << "\n";
+        gbm_surface_release_buffer(gbm_surface_, bo);
         return false;
     }
 
@@ -297,6 +298,8 @@ bool DisplayManager::page_flip() {
         // First frame: Set CRTC
         if (drmModeSetCrtc(drm_fd_, crtc_id_, fb, 0, 0, &drm_connector_->connector_id, 1, &mode_)) {
             std::cerr << "Failed to set CRTC: " << std::strerror(errno) << "\n";
+            drmModeRmFB(drm_fd_, fb);
+            gbm_surface_release_buffer(gbm_surface_, bo);
             return false;
         }
         current_bo_ = bo;
@@ -307,6 +310,11 @@ bool DisplayManager::page_flip() {
         next_fb_ = fb;
         if (drmModePageFlip(drm_fd_, crtc_id_, fb, DRM_MODE_PAGE_FLIP_EVENT, this)) {
             std::cerr << "Page flip failed: " << std::strerror(errno) << "\n";
+            // Release the buffer we just locked to prevent permanent freeze
+            drmModeRmFB(drm_fd_, fb);
+            gbm_surface_release_buffer(gbm_surface_, bo);
+            next_bo_ = nullptr;
+            next_fb_ = 0;
             return false;
         }
         waiting_for_flip_ = true;

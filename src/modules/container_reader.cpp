@@ -18,6 +18,13 @@ ContainerReader::~ContainerReader() {
 
 std::expected<void, MediaError> ContainerReader::open(const std::string& filepath) {
     std::cout << "ContainerReader: Opening " << filepath << " using FFmpeg (Architecture Ready)\n";
+    
+    // Close any previously opened container to prevent double-open segfault
+    if (this->format_ctx_) {
+        avformat_close_input(&this->format_ctx_);
+        this->format_ctx_ = nullptr;
+    }
+    
     if (avformat_open_input(&this->format_ctx_, filepath.c_str(), nullptr, nullptr) != 0) {
         return std::unexpected(MediaError::FileNotFound);
     }

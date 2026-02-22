@@ -20,7 +20,6 @@
 #include "modules/screenshot_module.hpp"
 #include "modules/news_module.hpp"
 #include "modules/video_decoder.hpp"
-#include "modules/audio_player.hpp"
 #include "modules/container_reader.hpp"
 
 using namespace nuc_display;
@@ -269,7 +268,11 @@ int main() {
 
         // --- PAGE FLIP ---
         if (!display->page_flip()) {
-            break;
+            // Transient failure (e.g., after screenshot). Don't exit — just skip this frame.
+            // Still process DRM events in case a flip was already pending.
+            display->process_drm_events(16);
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            continue;
         }
 
         // --- PROCESS KMS EVENTS (VSYNC) ---

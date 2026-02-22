@@ -1,5 +1,6 @@
 #include "modules/video_decoder.hpp"
 #include <iostream>
+#include <drm_fourcc.h>
 
 namespace nuc_display::modules {
 
@@ -193,28 +194,15 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
             }
         )";
         // Require the external OES extension
+        // With proper NV12 DMA-BUF import (Y + UV planes), the Intel EGL driver
+        // performs the YUV-to-RGB conversion automatically. Passthrough shader.
         const char* fs = R"(
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             varying vec2 v_texCoord;
             uniform samplerExternalOES s_texture;
             void main() {
-                // Hardware NV12 YUV is often sampled as raw data if EGL cannot imply color space. 
-                // We perform limited-range BT.601 YUV to RGB conversion.
-                vec4 texel = texture2D(s_texture, v_texCoord);
-                
-                // For many DRM PRIME backends, the "R" channel is Y, "G" is U, "B" is V.
-                // However, depending on the driver, it may sample as RGB or YUV directly.
-                // Let's assume standard BT.601 matrix for YCbCr if it's sampling raw YUV components:
-                float y = texel.r - 0.0627;
-                float u = texel.g - 0.5;
-                float v = texel.b - 0.5;
-                
-                float r = y + 1.402 * v;
-                float g = y - 0.3441 * u - 0.7141 * v;
-                float b = y + 1.772 * u;
-                
-                gl_FragColor = vec4(r, g, b, 1.0);
+                gl_FragColor = texture2D(s_texture, v_texCoord);
             }
         )";
         
@@ -289,6 +277,16 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
             PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES_ptr = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
             
             if (eglCreateImageKHR_ptr && glEGLImageTargetTexture2DOES_ptr && desc && desc->nb_layers > 0) {
+                // Log the fourcc format for debugging
+                uint32_t fourcc = desc->layers[0].format;
+                char fc[5] = { (char)(fourcc & 0xFF), (char)((fourcc>>8) & 0xFF), (char)((fourcc>>16) & 0xFF), (char)((fourcc>>24) & 0xFF), 0 };
+                static bool logged = false;
+                if (!logged) {
+                    std::cout << "DRM PRIME format: " << fc << " (0x" << std::hex << fourcc << std::dec << ")" 
+                              << " layers=" << desc->nb_layers << " planes=" << desc->layers[0].nb_planes << "\n";
+                    logged = true;
+                }
+
                 if (this->current_egl_image_ != EGL_NO_IMAGE_KHR) {
                     eglDestroyImageKHR_ptr(this->egl_display_, this->current_egl_image_);
                     this->current_egl_image_ = EGL_NO_IMAGE_KHR;
@@ -297,18 +295,47 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
                 std::vector<EGLint> attribs;
                 attribs.push_back(EGL_WIDTH); attribs.push_back(this->codec_ctx_->width);
                 attribs.push_back(EGL_HEIGHT); attribs.push_back(this->codec_ctx_->height);
-                attribs.push_back(EGL_LINUX_DRM_FOURCC_EXT); attribs.push_back(desc->layers[0].format);
                 
-                // Add plane 0 (Y)
-                attribs.push_back(EGL_DMA_BUF_PLANE0_FD_EXT); attribs.push_back(desc->objects[desc->layers[0].planes[0].object_index].fd);
-                attribs.push_back(EGL_DMA_BUF_PLANE0_OFFSET_EXT); attribs.push_back(desc->layers[0].planes[0].offset);
-                attribs.push_back(EGL_DMA_BUF_PLANE0_PITCH_EXT); attribs.push_back(desc->layers[0].planes[0].pitch);
-                
-                // Add plane 1 (UV) if it exists (NV12)
-                if (desc->layers[0].nb_planes > 1) {
-                    attribs.push_back(EGL_DMA_BUF_PLANE1_FD_EXT); attribs.push_back(desc->objects[desc->layers[0].planes[1].object_index].fd);
-                    attribs.push_back(EGL_DMA_BUF_PLANE1_OFFSET_EXT); attribs.push_back(desc->layers[0].planes[1].offset);
-                    attribs.push_back(EGL_DMA_BUF_PLANE1_PITCH_EXT); attribs.push_back(desc->layers[0].planes[1].pitch);
+                if (desc->nb_layers == 2) {
+                    // Multi-layer NV12: Layer 0 = Y (R8), Layer 1 = UV
+                    // Import as DRM_FORMAT_NV12 with Y from layer 0, UV from layer 1
+                    attribs.push_back(EGL_LINUX_DRM_FOURCC_EXT); attribs.push_back(DRM_FORMAT_NV12);
+                    
+                    // Plane 0: Y from layer 0
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_FD_EXT); 
+                    attribs.push_back(desc->objects[desc->layers[0].planes[0].object_index].fd);
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_OFFSET_EXT); 
+                    attribs.push_back(desc->layers[0].planes[0].offset);
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_PITCH_EXT); 
+                    attribs.push_back(desc->layers[0].planes[0].pitch);
+                    
+                    // Plane 1: UV from layer 1
+                    attribs.push_back(EGL_DMA_BUF_PLANE1_FD_EXT); 
+                    attribs.push_back(desc->objects[desc->layers[1].planes[0].object_index].fd);
+                    attribs.push_back(EGL_DMA_BUF_PLANE1_OFFSET_EXT); 
+                    attribs.push_back(desc->layers[1].planes[0].offset);
+                    attribs.push_back(EGL_DMA_BUF_PLANE1_PITCH_EXT); 
+                    attribs.push_back(desc->layers[1].planes[0].pitch);
+                } else {
+                    // Single-layer: use the format as-is
+                    attribs.push_back(EGL_LINUX_DRM_FOURCC_EXT); attribs.push_back(desc->layers[0].format);
+                    
+                    // Add all planes from layer 0
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_FD_EXT); 
+                    attribs.push_back(desc->objects[desc->layers[0].planes[0].object_index].fd);
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_OFFSET_EXT); 
+                    attribs.push_back(desc->layers[0].planes[0].offset);
+                    attribs.push_back(EGL_DMA_BUF_PLANE0_PITCH_EXT); 
+                    attribs.push_back(desc->layers[0].planes[0].pitch);
+                    
+                    if (desc->layers[0].nb_planes > 1) {
+                        attribs.push_back(EGL_DMA_BUF_PLANE1_FD_EXT); 
+                        attribs.push_back(desc->objects[desc->layers[0].planes[1].object_index].fd);
+                        attribs.push_back(EGL_DMA_BUF_PLANE1_OFFSET_EXT); 
+                        attribs.push_back(desc->layers[0].planes[1].offset);
+                        attribs.push_back(EGL_DMA_BUF_PLANE1_PITCH_EXT); 
+                        attribs.push_back(desc->layers[0].planes[1].pitch);
+                    }
                 }
                 
                 attribs.push_back(EGL_NONE);
