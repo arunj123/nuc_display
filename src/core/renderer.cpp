@@ -59,6 +59,10 @@ void Renderer::init(int width, int height) {
 
     glGenBuffers(1, &vbo_);
     
+    // Create a 1x1 white texture for untextured solid drawing
+    uint8_t white_pixel[4] = {255, 255, 255, 255};
+    white_texture_ = create_texture(white_pixel, 1, 1, 4);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -208,6 +212,41 @@ void Renderer::draw_text(const std::vector<modules::GlyphData>& glyphs, float st
 
         x += (float)glyph.advance / width_ * scale;
     }
+}
+
+void Renderer::draw_line_strip(const std::vector<float>& points, float r, float g, float b, float a, float line_width) {
+    if (points.size() < 4) return; // Need at least two x,y pairs
+
+    glUseProgram(program_);
+    glLineWidth(line_width);
+
+    std::vector<float> vertices;
+    vertices.reserve(points.size() * 2);
+    for (size_t i = 0; i < points.size(); i += 2) {
+        vertices.push_back(points[i]);
+        vertices.push_back(points[i+1]);
+        vertices.push_back(0.0f); // Default texCoord
+        vertices.push_back(0.0f);
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+
+    glUniformMatrix4fv(matrix_loc_, 1, GL_FALSE, matrix_);
+    glUniform4f(color_loc_, r, g, b, a);
+    glUniform1i(glGetUniformLocation(program_, "u_type"), 0);
+
+    glVertexAttribPointer(position_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(position_loc_);
+
+    glVertexAttribPointer(tex_coord_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(tex_coord_loc_);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, white_texture_);
+    glUniform1i(sampler_loc_, 0);
+
+    glDrawArrays(GL_LINE_STRIP, 0, points.size() / 2);
 }
 
 GLuint Renderer::compile_shader(GLenum type, const char* source) {

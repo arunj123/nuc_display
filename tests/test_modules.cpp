@@ -51,3 +51,15 @@ TEST(WeatherModuleTest, DescriptionAndIconMapping) {
     EXPECT_EQ(module.get_weather_description(999), "Unknown");
     EXPECT_EQ(module.get_weather_icon_filename(999), "assets/weather/unknown.png");
 }
+
+#include "modules/stock_module.hpp"
+
+TEST(StockModuleTest, InvalidSymbolHandled) {
+    StockModule module;
+    // Test that fetching/parsing an invalid symbol gracefully fails and doesn't crash
+    module.add_symbol("INVALID_SYMBOL_ABC_123", "Invalid");
+    module.update_all_data();
+    
+    // Check that we don't have crash and state is still valid
+    SUCCEED();
+}

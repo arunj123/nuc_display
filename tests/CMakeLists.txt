@@ -27,6 +27,7 @@ add_executable(test_modules
     ../src/modules/image_loader.cpp 
     ../src/modules/text_renderer.cpp
     ../src/modules/weather_module.cpp
+    ../src/modules/stock_module.cpp
     ../src/core/renderer.cpp
 )
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})

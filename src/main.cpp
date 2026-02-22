@@ -12,6 +12,7 @@
 #include "modules/image_loader.hpp"
 #include "modules/text_renderer.hpp"
 #include "modules/weather_module.hpp"
+#include "modules/stock_module.hpp"
 #include "modules/screenshot_module.hpp"
 #include "modules/video_decoder.hpp"
 #include "modules/audio_player.hpp"
@@ -66,6 +67,13 @@ int main() {
     bool screenshot_taken = false;
     auto screenshot_module = std::make_unique<modules::ScreenshotModule>();
     
+    // Stock Module
+    auto stock_module = std::make_unique<modules::StockModule>();
+    stock_module->add_symbol("^IXIC", "NASDAQ");
+    stock_module->add_symbol("^GSPC", "S&P 500");
+    stock_module->add_symbol("^NSEI", "NIFTY 50");
+    stock_module->add_symbol("QQQ", "Invesco QQQ");
+
     // Image Loading
     auto image_loader = std::make_unique<modules::ImageLoader>();
 
@@ -88,7 +96,13 @@ int main() {
         return weather_module->fetch_current_weather(51.5074f, -0.1278f);
     });
 
+    auto stock_task = thread_pool.enqueue([&stock_module]() {
+        stock_module->update_all_data();
+    });
+
     auto last_weather_update = std::chrono::steady_clock::now();
+    auto last_stock_update = std::chrono::steady_clock::now();
+    auto program_start_time = std::chrono::steady_clock::now();
 
     float color_offset = 0.0f;
 
@@ -112,12 +126,29 @@ int main() {
             }
         }
 
+        // --- CHECK STOCK UPDATES (Every 5 mins) ---
+        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_stock_update).count() >= 5) {
+            stock_task = thread_pool.enqueue([&stock_module]() {
+                stock_module->update_all_data();
+            });
+            last_stock_update = now;
+        }
+
+        if (stock_task.valid() && stock_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            stock_task.get();
+            std::cout << "[Stock] Data Updated.\n";
+        }
+
         // --- RENDER WEATHER DASHBOARD ---
         if (weather_data) {
             weather_module->render(*renderer, *image_loader, *text_renderer, weather_data.value());
             
-            // Take a screenshot once for verification
-            if (!screenshot_taken && weather_data) {
+            double render_time_sec = std::chrono::duration<double>(now - program_start_time).count();
+            stock_module->render(*renderer, *text_renderer, render_time_sec);
+
+            
+            // Take a screenshot once for verification after APIs resolve
+            if (!screenshot_taken && render_time_sec > 4.0) {
                 if (auto cap_res = screenshot_module->capture(display->width(), display->height()); cap_res) {
                     screenshot_module->save("debug_weather.png");
                     screenshot_taken = true;

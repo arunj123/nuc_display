@@ -26,6 +26,10 @@ public:
     void init(int width, int height);
     void clear(float r, float g, float b, float a);
     
+    int width() const { return width_; }
+    int height() const { return height_; }
+
+    
     // Orientation correction
     void set_rotation(int degrees); // 0, 90, 180, 270
     void set_flip(bool horizontal, bool vertical);
@@ -37,6 +41,7 @@ public:
     // Draw calls (using normalized coords 0.0 to 1.0)
     void draw_quad(uint32_t texture_id, float x, float y, float w, float h, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
     void draw_text(const std::vector<modules::GlyphData>& glyphs, float start_x, float start_y, float scale, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
+    void draw_line_strip(const std::vector<float>& points, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f, float line_width = 2.0f);
 
 private:
     void update_matrix();
@@ -50,6 +55,7 @@ private:
     GLuint matrix_loc_;
     GLuint color_loc_;
     GLuint vbo_;
+    GLuint white_texture_;
 
     float matrix_[16];
     int width_, height_;

@@ -5,8 +5,28 @@
 #include <curl/curl.h>
 #include <iostream>
 #include <sstream>
+#include <chrono>
+#include <iomanip>
 
 namespace nuc_display::modules {
+
+// Helper to wrap text after a certain number of characters
+static std::vector<std::string> wrap_text(const std::string& text, size_t max_chars) {
+    std::vector<std::string> lines;
+    std::istringstream words(text);
+    std::string word, current_line;
+    while (words >> word) {
+        if (current_line.length() + word.length() + 1 > max_chars && !current_line.empty()) {
+            lines.push_back(current_line);
+            current_line = word;
+        } else {
+            if (!current_line.empty()) current_line += " ";
+            current_line += word;
+        }
+    }
+    if (!current_line.empty()) lines.push_back(current_line);
+    return lines;
+}
 
 WeatherModule::WeatherModule() {
     curl_global_init(CURL_GLOBAL_ALL);
@@ -117,38 +137,61 @@ void WeatherModule::render(core::Renderer& renderer, ImageLoader& image_loader, 
     // 2. Clear Screen background (dark sleek grey)
     renderer.clear(0.05f, 0.05f, 0.07f, 1.0f);
 
-    // 3. Draw Icon (Left Side)
-    if (weather_icon_tex_) {
-        // x, y, w, h in 0..1 space. Center vertically.
-        renderer.draw_quad(weather_icon_tex_, 0.05f, 0.25f, 0.4f, 0.5f);
+    // 3. Time & Date (Top Left)
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+    struct tm *parts = std::localtime(&now_c);
+
+    std::stringstream time_ss;
+    time_ss << std::put_time(parts, "%H:%M");
+    text_renderer.set_pixel_size(0, 120);
+    if (auto glyphs = text_renderer.shape_text(time_ss.str())) {
+        renderer.draw_text(glyphs.value(), 0.05f, 0.12f, 1.0f);
     }
 
-    // 4. Draw Temperature
+    std::stringstream date_ss;
+    date_ss << std::put_time(parts, "%A, %B %d | ") << data.city;
+    text_renderer.set_pixel_size(0, 36);
+    if (auto glyphs = text_renderer.shape_text(date_ss.str())) {
+        renderer.draw_text(glyphs.value(), 0.05f, 0.18f, 1.0f, 0.7f, 0.7f, 0.7f, 1.0f);
+    }
+
+    // 4. Draw Icon (Mid Left)
+    float icon_w = 0.2f; // baseline width
+    if (weather_icon_tex_) {
+        float aspect = (float)renderer.width() / renderer.height();
+        float h = 0.3f;
+        icon_w = h / aspect; // Perfectly square physical pixels
+        renderer.draw_quad(weather_icon_tex_, 0.05f, 0.25f, icon_w, h);
+    }
+
+    // 5. Draw Temperature (Next to Icon)
     std::stringstream temp_ss;
     temp_ss.precision(1);
     temp_ss << std::fixed << data.temperature << "°C";
     
-    text_renderer.set_pixel_size(0, 140); // Set size BEFORE shaping
-    auto temp_glyphs = text_renderer.shape_text(temp_ss.str());
-    if (temp_glyphs) {
-        renderer.draw_text(temp_glyphs.value(), 0.5f, 0.35f, 1.0f);
+    text_renderer.set_pixel_size(0, 140);
+    if (auto glyphs = text_renderer.shape_text(temp_ss.str())) {
+        renderer.draw_text(glyphs.value(), 0.05f + icon_w + 0.02f, 0.40f, 1.0f);
     }
 
-    // 5. Draw Description
+    // 6. Draw Description (Below Icon)
     text_renderer.set_pixel_size(0, 56);
-    auto desc_glyphs = text_renderer.shape_text(data.description);
-    if (desc_glyphs) {
-        renderer.draw_text(desc_glyphs.value(), 0.5f, 0.55f, 1.0f);
+    auto desc_lines = wrap_text(data.description, 28);
+    float text_y = 0.62f;
+    for (const auto& line : desc_lines) {
+        if (auto glyphs = text_renderer.shape_text(line)) {
+            renderer.draw_text(glyphs.value(), 0.05f, text_y, 1.0f);
+        }
+        text_y += 0.06f;
     }
 
-    // 6. Draw Details (Humidity, Wind)
+    // 7. Draw Details (Humidity, Wind)
+    text_renderer.set_pixel_size(0, 36);
     std::stringstream detail_ss;
     detail_ss << "Humidity: " << (int)data.humidity << "% | Wind: " << data.wind_speed << " km/h";
-    
-    text_renderer.set_pixel_size(0, 36);
-    auto detail_glyphs = text_renderer.shape_text(detail_ss.str());
-    if (detail_glyphs) {
-        renderer.draw_text(detail_glyphs.value(), 0.5f, 0.68f, 1.0f);
+    if (auto glyphs = text_renderer.shape_text(detail_ss.str())) {
+        renderer.draw_text(glyphs.value(), 0.05f, text_y + 0.02f, 1.0f, 0.6f, 0.6f, 0.7f, 1.0f);
     }
 }
 
