@@ -1,3 +1,0 @@
-/home/arun/projects/nuc_display/build/_deps/googletest-subbuild/CMakeFiles/googletest-populate.dir
-/home/arun/projects/nuc_display/build/_deps/googletest-subbuild/CMakeFiles/edit_cache.dir
-/home/arun/projects/nuc_display/build/_deps/googletest-subbuild/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,12 @@
+build/
+bin/
+*.o
+*.so
+*.a
+.vscode/
+.DS_Store
+atests/
+googletest-src/
+googletest-build/
+googletest-populate-prefix/
+_deps/

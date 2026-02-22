@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -Wpedantic -g --coverage CMakeFiles/test_modules.dir/test_modules.cpp.o CMakeFiles/test_modules.dir/__/src/modules/image_loader.cpp.o CMakeFiles/test_modules.dir/__/src/modules/text_renderer.cpp.o -o test_modules  ../lib/libgtest_main.a -lfreetype -lharfbuzz -ljpeg -lpng16 ../lib/libgtest.a 
