@@ -19,20 +19,22 @@ To create a zero-overhead, ultra-low resource dashboard that utilizes native Int
 - **CI/CD:** GitHub Actions (Ubuntu standard runners).
 
 ## Project Structure
-- `src/main.c`: Core display initialization and rendering loop.
+- `src/main.cpp`: Core display initialization and rendering loop.
 - `CMakeLists.txt`: Build configuration.
 - `.github/workflows/`: CI/CD pipelines.
 - `.cursorrules`: Strict development rules for AI assistants.
 
-## Future Roadmap
-- [ ] stock market data integration via REST APIs.
-- [ ] Animated weather dashboard with GLES2 shaders.
-- [ ] Hardware-accelerated video playback using VAAPI.
-- [ ] Support for Vulkan rendering path.
+## User Permissions
+To run the application without `sudo`, your user must be part of the `video` and `render` groups:
+
+```bash
+sudo usermod -aG video,render $USER
+```
+*Note: You must log out and back in for these changes to take effect.*
 
 ## Local Build & Run
 ```bash
 cmake -S . -B build
 cmake --build build
-sudo ./build/nuc_display
+./build/nuc_display
 ```
