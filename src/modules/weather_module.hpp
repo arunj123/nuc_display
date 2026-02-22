@@ -24,10 +24,15 @@ struct WeatherData {
     float temperature;
     float humidity;
     float wind_speed;
+    float visibility;
+    float feels_like;
+    float uv_index;
     int weather_code;
     std::string description;
     std::string icon_path;
     std::string city;
+    std::string sunrise;
+    std::string sunset;
 };
 
 class WeatherModule {
@@ -42,13 +47,10 @@ public:
     std::string get_weather_icon_filename(int code);
 
     // Rendering
-    void render(core::Renderer& renderer, ImageLoader& image_loader, TextRenderer& text_renderer, const WeatherData& data);
+    void render(core::Renderer& renderer, TextRenderer& text_renderer, const WeatherData& data, double time_sec);
 
 private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
-    
-    uint32_t weather_icon_tex_ = 0;
-    std::string current_icon_path_;
 };
 
 } // namespace nuc_display::modules

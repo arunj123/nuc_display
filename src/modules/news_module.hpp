@@ -1,0 +1,36 @@
+#pragma once
+
+#include <string>
+#include <vector>
+#include <mutex>
+
+namespace nuc_display::core { class Renderer; }
+namespace nuc_display::modules { class TextRenderer; }
+
+namespace nuc_display::modules {
+
+struct NewsItem {
+    std::string title;
+    std::string source;
+};
+
+class NewsModule {
+public:
+    NewsModule();
+    ~NewsModule();
+
+    // Blocking fetch (run in thread pool)
+    void update_headlines();
+    
+    // Render scrolling headlines in specified region
+    void render(core::Renderer& renderer, TextRenderer& text_renderer, 
+                float x, float y, float w, float h, double time_sec);
+
+private:
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
+    
+    std::vector<NewsItem> headlines_;
+    mutable std::mutex mutex_;
+};
+
+} // namespace nuc_display::modules

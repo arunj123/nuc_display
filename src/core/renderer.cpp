@@ -32,7 +32,205 @@ const char* fragment_shader_source = R"(
     }
 )";
 
-Renderer::Renderer() : program_(0), position_loc_(0), tex_coord_loc_(0), sampler_loc_(0), matrix_loc_(0), vbo_(0), width_(0), height_(0) {
+const char* weather_fragment_shader = R"(
+    precision mediump float;
+    varying vec2 v_texCoord;
+    uniform float u_time;
+    uniform int u_weather_code;
+    uniform int u_is_night;
+
+    // Pseudo-random hash
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+    
+    // Value noise
+    float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+                   mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
+    }
+    
+    // Fractional Brownian Motion (fBM)
+    float fbm(vec2 p) {
+        float f = 0.0;
+        float amp = 0.5;
+        vec2 shift = vec2(100.0);
+        mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+        for (int i = 0; i < 5; i++) {
+            f += amp * noise(p);
+            p = rot * p * 2.0 + shift;
+            amp *= 0.5;
+        }
+        return f;
+    }
+
+    void main() {
+        // Coordinate mapping from (-1, -1) to (1, 1)
+        vec2 uv = v_texCoord * 2.0 - 1.0;
+        uv.y *= -1.0; // Invert Y for standard math orientation
+
+        // Determine Weather Type: 0=Clear, 1=Cloudy, 2=Rain, 3=Snow, 4=Storm
+        int type = 0;
+        if (u_weather_code >= 1 && u_weather_code <= 3) type = 1;
+        if (u_weather_code >= 51 && u_weather_code <= 67) type = 2; // Rain
+        if (u_weather_code >= 71 && u_weather_code <= 86) type = 3; // Snow
+        if (u_weather_code >= 95) type = 4; // Storm
+        
+        vec3 col = vec3(0.0);
+        float alpha = 0.0;
+        
+        // Scale uv to zoom in the objects slightly
+        vec2 sc_uv = uv * 0.65;
+        
+        // --- Background Stars (Night & Clear/Partly Cloudy only) ---
+        if (u_is_night == 1 && type <= 1) {
+            float star_hash = hash(floor(uv * 15.0));
+            if (star_hash > 0.95) {
+                // Twinkle effect
+                float twinkle = 0.5 + 0.5 * sin(u_time * 3.0 + star_hash * 10.0);
+                float star_size = hash(floor(uv * 15.0) + vec2(1.0)) * 0.02;
+                vec2 star_uv = fract(uv * 15.0) - 0.5;
+                float star_dist = length(star_uv);
+                float star = smoothstep(star_size, 0.0, star_dist) * twinkle;
+                if (star > 0.0) {
+                    col += vec3(0.9, 0.9, 1.0) * star;
+                    alpha = max(alpha, star * 0.8);
+                }
+            }
+        }
+        
+        // --- Celestial Body (Sun or Moon) ---
+        vec2 body_pos = vec2(0.0, 0.15); // Centered horizontally, slightly up
+        if (type < 4) { // Don't draw in heavy storms
+            if (u_is_night == 1) {
+                // Draw Crescent Moon
+                float moon_dist = length(uv - body_pos);
+                float shadow_dist = length(uv - (body_pos + vec2(0.08, 0.05))); // Shifted cut-out
+                float moon_glow = exp(-moon_dist * 5.0) * 0.4;
+                float moon_core = smoothstep(0.25, 0.22, moon_dist) - smoothstep(0.25, 0.22, shadow_dist);
+                moon_core = clamp(moon_core, 0.0, 1.0);
+                
+                vec3 moonCol = vec3(0.9, 0.95, 1.0);
+                col += moonCol * moon_core + vec3(0.3, 0.4, 0.6) * moon_glow;
+                alpha = max(alpha, moon_core + moon_glow);
+            } else {
+                // Draw Bright Sun
+                float sun_dist = length(uv - body_pos);
+                float sunIntensity = exp(-sun_dist * 4.0);
+                // Core sun
+                float sun_core = smoothstep(0.2, 0.15, sun_dist);
+                col += vec3(1.0, 0.9, 0.4) * sun_core + vec3(1.0, 0.6, 0.1) * sunIntensity * 0.8;
+                alpha = max(alpha, max(sun_core, sunIntensity));
+            }
+        }
+
+        // --- Animated Volumetric Cloud Layer ---
+        float cloudCover = 0.0;
+        if (type > 0) {
+            vec2 cloudUV = uv * 2.0;
+            float speed = (type >= 2) ? 0.3 : 0.1;
+            if (type == 4) speed = 0.8;
+            cloudUV.x += u_time * speed;
+            
+            float density = fbm(cloudUV);
+            
+            // Mask to keep clouds in the upper half generally
+            float mask = 1.0 - smoothstep(0.0, 1.5, length(uv - vec2(0.0, 0.5)));
+            density *= mask;
+            density = smoothstep(0.3, 0.7, density);
+            
+            vec2 lightDir = normalize(vec2(0.5, 0.5));
+            float dX = fbm(cloudUV + vec2(0.01, 0.0)) - fbm(cloudUV - vec2(0.01, 0.0));
+            float dY = fbm(cloudUV + vec2(0.0, 0.01)) - fbm(cloudUV - vec2(0.0, 0.01));
+            vec3 normal = normalize(vec3(-dX, -dY, 1.0));
+            vec3 lightVec = normalize(vec3(lightDir, 1.0));
+            
+            float diffuse = max(dot(normal, lightVec), 0.0);
+            
+            vec3 baseCloudCol = vec3(1.0);
+            if (u_is_night == 1) {
+                baseCloudCol = vec3(0.3, 0.3, 0.4); // Dark blueish clouds at night
+                if (type >= 2) baseCloudCol = vec3(0.15, 0.15, 0.2); // Darker storm clouds
+            } else {
+                if (type >= 2) baseCloudCol = vec3(0.55, 0.6, 0.65);
+                if (type == 4) baseCloudCol = vec3(0.35, 0.4, 0.45);
+            }
+            
+            // Lightning for storms
+            if (type == 4) {
+                float flash = sin(u_time * 15.0) * sin(u_time * 2.0);
+                if (flash > 0.8) baseCloudCol += vec3(0.6, 0.7, 1.0);
+            }
+            
+            vec3 finalCloudCol = baseCloudCol * (0.3 + 0.7 * diffuse);
+            
+            cloudCover = density;
+            // Mix cloud over existing background (sun/moon)
+            col = mix(col, finalCloudCol, cloudCover);
+            alpha = max(alpha, cloudCover);
+        }
+        
+        // --- Precipitation Layer (Rain or Snow) ---
+        if (type == 2 || type == 3 || type == 4) {
+            vec2 p_uv = uv;
+            float fallSpeed = (type == 3) ? 0.4 : 2.0;
+            if (type == 4) fallSpeed = 3.5;
+            
+            // Dynamic rain/snow rendering
+            if (type == 3) {
+                // Elegant Snowflakes
+                p_uv.y += u_time * fallSpeed;
+                p_uv.x += sin(u_time + p_uv.y * 5.0) * 0.1; // Swaying motion
+                
+                vec2 p_id = floor(p_uv * 10.0);
+                vec2 p_f = fract(p_uv * 10.0) - 0.5;
+                float p_hash = hash(p_id);
+                
+                if (p_hash > 0.6) {
+                    float flake = smoothstep(0.15, 0.02, length(p_f - vec2(0.0, p_hash - 0.5)));
+                    col = mix(col, vec3(1.0), flake * 0.8);
+                    alpha = max(alpha, flake * 0.8);
+                }
+            } else {
+                // Realistic Rain (Multiple skewed layers at varying speeds)
+                float rain_intensity = 0.0;
+                // Layer 1 (background, slower, thinner)
+                vec2 r1_uv = uv * vec2(20.0, 5.0);
+                r1_uv.y += u_time * fallSpeed * 4.0;
+                r1_uv.x += uv.y * 2.0; // slight slant
+                float n1 = hash(floor(r1_uv));
+                if (n1 > 0.85) {
+                    vec2 r1_f = fract(r1_uv) - 0.5;
+                    float drop1 = smoothstep(0.1, 0.0, abs(r1_f.x)) * smoothstep(0.5, 0.0, abs(r1_f.y + n1 - 0.5));
+                    rain_intensity += drop1 * 0.3;
+                }
+                
+                // Layer 2 (foreground, faster, thicker)
+                vec2 r2_uv = uv * vec2(10.0, 3.0);
+                r2_uv.y += u_time * fallSpeed * 6.0;
+                r2_uv.x += uv.y * 3.0; // steeper slant
+                if (type == 4) r2_uv.x += uv.y * 6.0 + u_time * 2.0; // heavy wind in storm
+                float n2 = hash(floor(r2_uv));
+                if (n2 > 0.75) {
+                    vec2 r2_f = fract(r2_uv) - 0.5;
+                    float drop2 = smoothstep(0.15, 0.0, abs(r2_f.x)) * smoothstep(0.4, 0.0, abs(r2_f.y + n2 - 0.5));
+                    rain_intensity += drop2 * 0.6;
+                }
+                
+                vec3 rain_col = (u_is_night == 1) ? vec3(0.6, 0.7, 0.9) : vec3(0.8, 0.9, 1.0);
+                col = mix(col, rain_col, min(rain_intensity, 1.0));
+                alpha = max(alpha, min(rain_intensity, 1.0));
+            }
+        }
+        
+        gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
+    }
+)";
+
+Renderer::Renderer() : program_(0), position_loc_(0), tex_coord_loc_(0), sampler_loc_(0), matrix_loc_(0), color_loc_(0), weather_program_(0), weather_pos_loc_(0), weather_matrix_loc_(0), weather_time_loc_(0), weather_code_loc_(0), weather_coord_loc_(0), vbo_(0), white_texture_(0), width_(0), height_(0) {
     for (int i = 0; i < 16; i++) matrix_[i] = (i % 5 == 0) ? 1.0f : 0.0f;
 }
 
@@ -56,6 +254,20 @@ void Renderer::init(int width, int height) {
     sampler_loc_ = glGetUniformLocation(program_, "s_texture");
     matrix_loc_ = glGetUniformLocation(program_, "u_matrix");
     color_loc_  = glGetUniformLocation(program_, "u_color");
+
+    // Weather Shader initialization
+    GLuint vs_w = compile_shader(GL_VERTEX_SHADER, vertex_shader_source);
+    GLuint fs_weather = compile_shader(GL_FRAGMENT_SHADER, weather_fragment_shader);
+    weather_program_ = link_program(vs_w, fs_weather);
+    glDeleteShader(vs_w);
+    glDeleteShader(fs_weather);
+
+    weather_pos_loc_ = glGetAttribLocation(weather_program_, "a_position");
+    weather_coord_loc_ = glGetAttribLocation(weather_program_, "a_texCoord");
+    weather_matrix_loc_ = glGetUniformLocation(weather_program_, "u_matrix");
+    weather_time_loc_ = glGetUniformLocation(weather_program_, "u_time");
+    weather_code_loc_ = glGetUniformLocation(weather_program_, "u_weather_code");
+    weather_is_night_loc_ = glGetUniformLocation(weather_program_, "u_is_night");
 
     glGenBuffers(1, &vbo_);
     
@@ -290,6 +502,33 @@ GLuint Renderer::link_program(GLuint vertex_shader, GLuint fragment_shader) {
         return 0;
     }
     return program;
+}
+
+void Renderer::draw_animated_weather(int weather_code, float x, float y, float w, float h, float time_sec, bool is_night) {
+    glUseProgram(weather_program_);
+
+    float vertices[] = {
+        x,     y,     0.0f, 0.0f,
+        x + w, y,     1.0f, 0.0f,
+        x,     y + h, 0.0f, 1.0f,
+        x + w, y + h, 1.0f, 1.0f,
+    };
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+
+    glUniformMatrix4fv(weather_matrix_loc_, 1, GL_FALSE, matrix_);
+    glUniform1f(weather_time_loc_, time_sec);
+    glUniform1i(weather_code_loc_, weather_code);
+    glUniform1i(weather_is_night_loc_, is_night ? 1 : 0);
+
+    glVertexAttribPointer(weather_pos_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(weather_pos_loc_);
+
+    glVertexAttribPointer(weather_coord_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(weather_coord_loc_);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 } // namespace nuc_display::core

@@ -48,6 +48,18 @@ TEST(WeatherModuleTest, DescriptionAndIconMapping) {
     EXPECT_EQ(module.get_weather_description(0), "Clear sky");
     EXPECT_EQ(module.get_weather_icon_filename(0), "assets/weather/clear.png");
     
+    // Check Storms
+    EXPECT_EQ(module.get_weather_description(95), "Thunderstorm: Slight or moderate");
+    EXPECT_EQ(module.get_weather_icon_filename(95), "assets/weather/storm.png");
+    
+    // Check Rain
+    EXPECT_EQ(module.get_weather_description(65), "Rain: Slight, moderate and heavy intensity");
+    EXPECT_EQ(module.get_weather_icon_filename(65), "assets/weather/rain.png");
+    
+    // Check Snow
+    EXPECT_EQ(module.get_weather_description(71), "Snow fall: Slight, moderate, and heavy intensity");
+    EXPECT_EQ(module.get_weather_icon_filename(71), "assets/weather/snow.png");
+
     EXPECT_EQ(module.get_weather_description(999), "Unknown");
     EXPECT_EQ(module.get_weather_icon_filename(999), "assets/weather/unknown.png");
 }

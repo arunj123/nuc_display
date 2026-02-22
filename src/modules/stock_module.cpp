@@ -19,8 +19,8 @@ StockModule::~StockModule() {
     curl_global_cleanup();
 }
 
-void StockModule::add_symbol(const std::string& symbol, const std::string& name) {
-    symbols_.push_back({symbol, name});
+void StockModule::add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol) {
+    symbols_.push_back({symbol, name, currency_symbol});
 }
 
 size_t StockModule::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -28,38 +28,38 @@ size_t StockModule::WriteCallback(void* contents, size_t size, size_t nmemb, voi
     return size * nmemb;
 }
 
-std::expected<StockData, StockError> StockModule::fetch_stock(const std::string& symbol, const std::string& name) {
-    CURL* curl;
-    CURLcode res;
-    std::string readBuffer;
+namespace {
+std::vector<float> resample_array(const std::vector<float>& input, int target_size) {
+    if (input.empty()) return {};
+    if (input.size() == 1) return std::vector<float>(target_size, input[0]);
+    if (target_size <= 1) return {input[0]};
 
-    curl = curl_easy_init();
-    if (!curl) return std::unexpected(StockError::NetworkError);
-
-    std::string url = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol + "?range=1d&interval=5m";
-
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-
-    res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK) {
-        std::cerr << "CURL Error Fetching Stock " << symbol << ": " << curl_easy_strerror(res) << "\n";
-        return std::unexpected(StockError::NetworkError);
+    std::vector<float> output(target_size);
+    for (int i = 0; i < target_size; ++i) {
+        float t = static_cast<float>(i) / (target_size - 1);
+        float index_f = t * (input.size() - 1);
+        int idx1 = static_cast<int>(index_f);
+        int idx2 = std::min(idx1 + 1, static_cast<int>(input.size() - 1));
+        float frac = index_f - idx1;
+        output[i] = input[idx1] * (1.0f - frac) + input[idx2] * frac;
     }
+    return output;
+}
 
+std::optional<StockChart> fetch_single_range(CURL* curl, const std::string& symbol, const std::string& label, const std::string& range, const std::string& interval) {
+    std::string readBuffer;
+    std::string url = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol + "?range=" + range + "&interval=" + interval;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+    
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) return std::nullopt;
+    
     try {
         auto json = nlohmann::json::parse(readBuffer);
         auto result = json["chart"]["result"][0];
         
-        float current_price = result["meta"]["regularMarketPrice"];
-        float prev_close_price = result["meta"]["chartPreviousClose"];
-        float change_percent = ((current_price - prev_close_price) / prev_close_price) * 100.0f;
-
         std::vector<float> prices;
         auto close_array = result["indicators"]["quote"][0]["close"];
         for (const auto& price : close_array) {
@@ -67,20 +67,85 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const std::string&
                 prices.push_back(price);
             }
         }
+        if (prices.empty()) return std::nullopt;
+        
+        float change_percent = 0.0f;
+        if (label == "1D") {
+            float prev_close = result["meta"]["chartPreviousClose"];
+            float current = result["meta"]["regularMarketPrice"];
+            change_percent = ((current - prev_close) / prev_close) * 100.0f;
+        } else {
+            float current = result["meta"]["regularMarketPrice"]; // Most accurate
+            float first = prices.front();
+            change_percent = ((current - first) / first) * 100.0f;
+        }
+        
+        return StockChart{label, change_percent, resample_array(prices, 100)};
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+}
 
-        return StockData{symbol, name, current_price, change_percent, prices};
-    } catch (const std::exception& e) {
-        std::cerr << "JSON Parse Error for Stock " << symbol << ": " << e.what() << "\n";
+std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig& config) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return std::unexpected(StockError::NetworkError);
+
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    // Ignore SSL issues locally if needed
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+
+    StockData data;
+    data.symbol = config.symbol;
+    data.name = config.name;
+    data.currency_symbol = config.currency_symbol;
+    
+    // Fetch 1D to get current price and first chart
+    std::string current_price_readBuffer;
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &current_price_readBuffer);
+    curl_easy_setopt(curl, CURLOPT_URL, ("https://query1.finance.yahoo.com/v8/finance/chart/" + config.symbol + "?range=1d&interval=5m").c_str());
+    
+    if (curl_easy_perform(curl) != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return std::unexpected(StockError::NetworkError);
+    }
+    
+    try {
+        auto json = nlohmann::json::parse(current_price_readBuffer);
+        data.current_price = json["chart"]["result"][0]["meta"]["regularMarketPrice"];
+    } catch (...) {
+        curl_easy_cleanup(curl);
         return std::unexpected(StockError::ParseError);
     }
+
+    // Sequence queries
+    // 1D
+    if (auto c1 = fetch_single_range(curl, config.symbol, "1D", "1d", "5m")) data.charts.push_back(c1.value());
+    // 5D
+    if (auto c5 = fetch_single_range(curl, config.symbol, "5D", "5d", "15m")) data.charts.push_back(c5.value());
+    // 1M
+    if (auto c1m = fetch_single_range(curl, config.symbol, "1M", "1mo", "1d")) data.charts.push_back(c1m.value());
+    // 1Y
+    if (auto c1y = fetch_single_range(curl, config.symbol, "1Y", "1y", "1d")) data.charts.push_back(c1y.value());
+
+    curl_easy_cleanup(curl);
+
+    if (data.charts.empty()) {
+        return std::unexpected(StockError::ParseError);
+    }
+    
+    return data;
 }
 
 void StockModule::update_all_data() {
     std::vector<StockData> new_data;
     for (const auto& sym : symbols_) {
-        auto res = fetch_stock(sym.first, sym.second);
+        auto res = fetch_stock(sym);
         if (res) {
             new_data.push_back(res.value());
+        } else {
+            std::cerr << "[StockModule] Failed to fetch stock data for: " << sym.symbol << "\n";
         }
     }
     // thread safe assignment
@@ -90,76 +155,112 @@ void StockModule::update_all_data() {
 void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, double time_sec) {
     if (stock_data_.empty()) return;
 
-    // Switch every 10 seconds
-    if (time_sec - last_switch_time_ > 10.0) {
+    double display_duration_per_chart = 3.0; // 3 seconds per timeframe
+    double display_duration_per_stock = display_duration_per_chart * stock_data_[current_index_].charts.size();
+
+    // Switch stock entirely every 'display_duration_per_stock'
+    if (time_sec - last_switch_time_ > display_duration_per_stock) {
         current_index_ = (current_index_ + 1) % stock_data_.size();
         last_switch_time_ = time_sec;
     }
 
     const auto& data = stock_data_[current_index_];
-
-    // Compute simple slide-up animation when switching
-    float anim_progress = std::min(1.0, (time_sec - last_switch_time_) * 1.5); // 0.66s duration
-    // ease out cubic
-    float ease = 1.0f - std::pow(1.0f - anim_progress, 3.0f);
     
-    // Y offset for animation
-    float y_offset = (1.0f - ease) * 0.1f;
+    if (data.charts.empty()) return;
 
-    // Opacity
-    float alpha = ease;
+    double local_time = time_sec - last_switch_time_;
+    size_t active_chart_idx = static_cast<size_t>(local_time / display_duration_per_chart) % data.charts.size();
+    size_t prev_chart_idx = (active_chart_idx + data.charts.size() - 1) % data.charts.size();
+    
+    double chart_local_time = std::fmod(local_time, display_duration_per_chart);
+    
+    // Smooth transition from prev to active over 0.6 seconds
+    float morph_progress = std::min(1.0, chart_local_time / 0.6);
+    float morph_ease = 1.0f - std::pow(1.0f - morph_progress, 3.0f);
+    
+    // During the very first chart of a new stock, animate it sliding up
+    float alpha = 1.0f;
+    float y_offset = 0.0f;
+    if (active_chart_idx == 0 && chart_local_time < 0.6) {
+        float entry_progress = chart_local_time / 0.6;
+        float entry_ease = 1.0f - std::pow(1.0f - entry_progress, 3.0f);
+        alpha = entry_ease;
+        y_offset = (1.0f - entry_ease) * 0.1f;
+        
+        // Hard-set morph ease so we don't interpolate from the 1Y chart belonging to the previous stock loop
+        morph_ease = 1.0f; 
+    }
 
-    // We render on the right half (x around 0.55 to 0.95)
-    float base_x = 0.55f;
+    const auto& active_chart = data.charts[active_chart_idx];
+    const auto& prev_chart = data.charts[prev_chart_idx];
+
+    // We render on the right half (x around 0.42 to 0.95)
+    float base_x = 0.42f;
     float current_y = 0.15f + y_offset;
 
-    // 1. Draw Symbol Name
-    text_renderer.set_pixel_size(0, 80);
-    if (auto glyphs = text_renderer.shape_text(data.name)) {
-        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
-    }
-    
-    // Ticker Symbol
-    text_renderer.set_pixel_size(0, 36);
-    if (auto glyphs = text_renderer.shape_text(data.symbol)) {
-        renderer.draw_text(glyphs.value(), base_x, current_y + 0.05f, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
+    // 1. Draw Symbol Name & Ticker
+    text_renderer.set_pixel_size(0, 48);
+    std::stringstream name_ss;
+    name_ss << data.name << "  (" << data.symbol << ")";
+    if (auto glyphs = text_renderer.shape_text(name_ss.str())) {
+        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
     }
 
-    current_y += 0.20f;
+    current_y += 0.12f;
 
-    // 2. Draw Price
+    // 2. Draw Price (Large)
     std::stringstream price_ss;
-    price_ss << std::fixed << std::setprecision(2) << "$" << data.current_price;
-    text_renderer.set_pixel_size(0, 120);
+    price_ss << std::fixed << std::setprecision(2) << data.currency_symbol << data.current_price;
+    text_renderer.set_pixel_size(0, 160);
     if (auto glyphs = text_renderer.shape_text(price_ss.str())) {
         renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
     }
+    current_y += 0.08f;
 
-    // 3. Draw Change % (Green/Red)
-    std::stringstream change_ss;
-    change_ss << std::fixed << std::setprecision(2) << (data.change_percent >= 0 ? "+" : "") << data.change_percent << "%";
-    text_renderer.set_pixel_size(0, 60);
+    // 3. Draw Interpolated Change % (Green/Red) and Timeframe Label
+    float current_change = prev_chart.change_percent * (1.0f - morph_ease) + active_chart.change_percent * morph_ease;
     
-    float r = data.change_percent >= 0 ? 0.2f : 1.0f;
-    float g = data.change_percent >= 0 ? 0.8f : 0.3f;
+    std::stringstream change_ss;
+    change_ss << std::fixed << std::setprecision(2) << (current_change >= 0 ? "+" : "") << current_change << "%";
+    text_renderer.set_pixel_size(0, 56);
+    
+    float r = current_change >= 0 ? 0.2f : 1.0f;
+    float g = current_change >= 0 ? 0.8f : 0.3f;
     float b = 0.3f; // nice red/green
     
     if (auto glyphs = text_renderer.shape_text(change_ss.str())) {
-        renderer.draw_text(glyphs.value(), base_x, current_y + 0.08f, 1.0f, r, g, b, alpha);
+        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, r, g, b, alpha);
+    }
+    
+    // Timeframe Label (e.g. "1D")
+    // Pulse animation for the label text as it switches
+    float label_alpha = alpha * (0.5f + 0.5f * (1.0f - std::abs(1.0f - 2.0f * morph_ease))); // simple fade transition
+    if (morph_ease == 1.0f) label_alpha = alpha; // keep solid after transition
+    
+    if (auto glyphs = text_renderer.shape_text(active_chart.label)) {
+        // Offset arbitrarily by 0.15 to place next to the percentage
+        renderer.draw_text(glyphs.value(), base_x + 0.15f, current_y, 1.0f, 0.5f, 0.5f, 0.5f, label_alpha);
     }
 
     current_y += 0.15f;
 
-    // 4. Draw Sparkline
-    if (data.prices.size() > 2) {
-        float chart_w = 0.35f;
-        float chart_h = 0.25f;
+    // 4. Draw Interpolated Massive Sparkline and Scales
+    if (active_chart.prices.size() > 2 && prev_chart.prices.size() == active_chart.prices.size()) {
+        float chart_w = 0.50f; // Use almost all remaining width
+        float chart_h = 0.40f; // Use bottom half
         
-        // Find min/max for scaling
-        float min_p = data.prices[0], max_p = data.prices[0];
-        for (float p : data.prices) {
-            if (p < min_p) min_p = p;
-            if (p > max_p) max_p = p;
+        std::vector<float> interp_prices(active_chart.prices.size());
+        for (size_t i = 0; i < active_chart.prices.size(); i++) {
+            float p_prev = prev_chart.prices[i];
+            float p_curr = active_chart.prices[i];
+            interp_prices[i] = p_prev * (1.0f - morph_ease) + p_curr * morph_ease;
+        }
+        
+        // Find min/max for scaling of the interpolated array
+        float min_p = interp_prices[0], max_p = interp_prices[0];
+        for (float p : interp_prices) {
+             if (p < min_p) min_p = p;
+             if (p > max_p) max_p = p;
         }
 
         // Slight padding
@@ -168,17 +269,49 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         min_p -= pad; max_p += pad;
 
         std::vector<float> points;
-        points.reserve(data.prices.size() * 2);
+        points.reserve(interp_prices.size() * 2);
 
-        for (size_t i = 0; i < data.prices.size(); i++) {
-            float px = base_x + ((float)i / (data.prices.size() - 1)) * chart_w;
-            float py = current_y + chart_h - ((data.prices[i] - min_p) / (max_p - min_p)) * chart_h;
+        for (size_t i = 0; i < interp_prices.size(); i++) {
+            float px = base_x + ((float)i / (interp_prices.size() - 1)) * chart_w;
+            float py = current_y + chart_h - ((interp_prices[i] - min_p) / (max_p - min_p)) * chart_h;
             points.push_back(px);
             points.push_back(py);
         }
 
-        // Draw line with green/red tint representing day trend
-        renderer.draw_line_strip(points, r, g, b, alpha, 4.0f);
+        // Draw line with green/red tint representing trend
+        renderer.draw_line_strip(points, r, g, b, alpha, 5.0f); // Slightly thicker line
+
+        // Draw Scales
+        text_renderer.set_pixel_size(0, 24);
+        
+        // Max Scale
+        std::stringstream max_ss;
+        max_ss << std::fixed << std::setprecision(2) << max_p;
+        if (auto glyphs = text_renderer.shape_text(max_ss.str())) {
+            renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
+        }
+
+        // Mid Scale
+        std::stringstream mid_ss;
+        mid_ss << std::fixed << std::setprecision(2) << (min_p + (max_p - min_p) / 2.0f);
+        if (auto glyphs = text_renderer.shape_text(mid_ss.str())) {
+            renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y + chart_h / 2.0f, 1.0f, 0.4f, 0.4f, 0.4f, alpha);
+        }
+
+        // Min Scale
+        std::stringstream min_ss;
+        min_ss << std::fixed << std::setprecision(2) << min_p;
+        if (auto glyphs = text_renderer.shape_text(min_ss.str())) {
+            renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y + chart_h - 0.02f, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
+        }
+
+        // Time limits roughly
+        if (auto glyphs = text_renderer.shape_text("Start")) {
+            renderer.draw_text(glyphs.value(), base_x, current_y + chart_h + 0.04f, 1.0f, 0.5f, 0.5f, 0.5f, alpha);
+        }
+        if (auto glyphs = text_renderer.shape_text("Now")) {
+            renderer.draw_text(glyphs.value(), base_x + chart_w - 0.05f, current_y + chart_h + 0.04f, 1.0f, 0.5f, 0.5f, 0.5f, alpha);
+        }
     }
 }
 

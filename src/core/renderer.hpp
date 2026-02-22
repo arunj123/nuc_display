@@ -42,6 +42,7 @@ public:
     void draw_quad(uint32_t texture_id, float x, float y, float w, float h, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
     void draw_text(const std::vector<modules::GlyphData>& glyphs, float start_x, float start_y, float scale, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
     void draw_line_strip(const std::vector<float>& points, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f, float line_width = 2.0f);
+    void draw_animated_weather(int weather_code, float x, float y, float w, float h, float time_sec, bool is_night = false);
 
 private:
     void update_matrix();
@@ -54,6 +55,16 @@ private:
     GLuint sampler_loc_;
     GLuint matrix_loc_;
     GLuint color_loc_;
+    
+    // Weather Shader
+    GLuint weather_program_;
+    GLuint weather_pos_loc_;
+    GLuint weather_matrix_loc_;
+    GLuint weather_time_loc_;
+    GLuint weather_code_loc_;
+    GLuint weather_is_night_loc_;
+    GLuint weather_coord_loc_;
+
     GLuint vbo_;
     GLuint white_texture_;
 

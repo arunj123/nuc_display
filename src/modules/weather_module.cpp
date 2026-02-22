@@ -52,7 +52,8 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
     std::stringstream url;
     url << "https://api.open-meteo.com/v1/forecast?latitude=" << lat 
         << "&longitude=" << lon 
-        << "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m";
+        << "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,apparent_temperature,uv_index"
+        << "&daily=sunrise,sunset&timezone=auto";
 
     curl_easy_setopt(curl, CURLOPT_URL, url.str().c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
@@ -73,15 +74,28 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
     try {
         auto json = nlohmann::json::parse(readBuffer);
         auto current = json["current"];
+        auto daily = json["daily"];
 
         WeatherData data;
-        data.temperature = current["temperature_2m"];
-        data.humidity    = current["relative_humidity_2m"];
-        data.wind_speed  = current["wind_speed_10m"];
-        data.weather_code = current["weather_code"];
+        data.temperature = current.value("temperature_2m", 0.0f);
+        data.humidity    = current.value("relative_humidity_2m", 0.0f);
+        data.wind_speed  = current.value("wind_speed_10m", 0.0f);
+        data.visibility  = current.value("visibility", 0.0f);
+        data.feels_like  = current.value("apparent_temperature", 0.0f);
+        data.uv_index    = current.value("uv_index", 0.0f);
+        data.weather_code = current.value("weather_code", 0);
         data.description = get_weather_description(data.weather_code);
         data.icon_path   = get_weather_icon_filename(data.weather_code);
-        data.city        = "Home Sensor"; // Default for now
+        data.city        = "Home"; // Default from config
+        
+        if (daily.contains("sunrise") && daily["sunrise"].is_array() && !daily["sunrise"].empty()) {
+            std::string sr = daily["sunrise"][0];
+            if (sr.length() >= 5) data.sunrise = sr.substr(sr.length() - 5);
+        }
+        if (daily.contains("sunset") && daily["sunset"].is_array() && !daily["sunset"].empty()) {
+            std::string ss = daily["sunset"][0];
+            if (ss.length() >= 5) data.sunset = ss.substr(ss.length() - 5);
+        }
 
         return data;
     } catch (const nlohmann::json::exception& e) {
@@ -123,75 +137,185 @@ std::string WeatherModule::get_weather_icon_filename(int code) {
     }
 }
 
-void WeatherModule::render(core::Renderer& renderer, ImageLoader& image_loader, TextRenderer& text_renderer, const WeatherData& data) {
-    // 1. Handle Icon
-    if (data.icon_path != current_icon_path_) {
-        if (weather_icon_tex_) renderer.delete_texture(weather_icon_tex_);
-        
-        if (auto res = image_loader.load(data.icon_path); res) {
-            weather_icon_tex_ = renderer.create_texture(image_loader.get_rgba_data().data(), image_loader.width(), image_loader.height(), image_loader.channels());
-            current_icon_path_ = data.icon_path;
-        }
-    }
-
-    // 2. Clear Screen background (dark sleek grey)
+void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer, const WeatherData& data, double time_sec) {
+    // 1. Clear Screen background (dark sleek grey)
     renderer.clear(0.05f, 0.05f, 0.07f, 1.0f);
 
-    // 3. Time & Date (Top Left)
+    // =========================================================
+    // GRID LAYOUT
+    // Left column:  x = 0.03 to 0.39  (weather, info, news)
+    // Right column: x = 0.42 to 0.97  (stocks)
+    // Separator:    x = 0.40
+    // =========================================================
+    float lx = 0.03f;              // left margin
+    float left_col_right = 0.39f;  // right edge of left column
+    float left_w = left_col_right - lx;  // 0.36
+    float sep_x = 0.405f;          // separator line x
+    float aspect = (float)renderer.width() / renderer.height();
+
+    // --- Draw Vertical Separator Line ---
+    std::vector<float> sep_pts = { sep_x, 0.03f, sep_x, 0.97f };
+    renderer.draw_line_strip(sep_pts, 0.2f, 0.2f, 0.25f, 0.6f, 1.0f);
+
+    // =========================================================
+    // ROW 1: Time (left) & Temperature (right)   (y = 0.04 - 0.12)
+    // =========================================================
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     struct tm *parts = std::localtime(&now_c);
 
+    // Time (left)
     std::stringstream time_ss;
     time_ss << std::put_time(parts, "%H:%M");
-    text_renderer.set_pixel_size(0, 120);
+    text_renderer.set_pixel_size(0, 95);
     if (auto glyphs = text_renderer.shape_text(time_ss.str())) {
-        renderer.draw_text(glyphs.value(), 0.05f, 0.12f, 1.0f);
+        renderer.draw_text(glyphs.value(), lx, 0.11f, 1.0f);
     }
 
-    std::stringstream date_ss;
-    date_ss << std::put_time(parts, "%A, %B %d | ") << data.city;
-    text_renderer.set_pixel_size(0, 36);
-    if (auto glyphs = text_renderer.shape_text(date_ss.str())) {
-        renderer.draw_text(glyphs.value(), 0.05f, 0.18f, 1.0f, 0.7f, 0.7f, 0.7f, 1.0f);
-    }
-
-    // 4. Draw Icon (Mid Left)
-    float icon_w = 0.2f; // baseline width
-    if (weather_icon_tex_) {
-        float aspect = (float)renderer.width() / renderer.height();
-        float h = 0.3f;
-        icon_w = h / aspect; // Perfectly square physical pixels
-        renderer.draw_quad(weather_icon_tex_, 0.05f, 0.25f, icon_w, h);
-    }
-
-    // 5. Draw Temperature (Next to Icon)
+    // Temperature (right-aligned in left column)
     std::stringstream temp_ss;
-    temp_ss.precision(1);
-    temp_ss << std::fixed << data.temperature << "°C";
-    
-    text_renderer.set_pixel_size(0, 140);
+    temp_ss << std::fixed << std::setprecision(1) << data.temperature << "\xC2\xB0" << "C";
+    float temp_w = 0.0f;
     if (auto glyphs = text_renderer.shape_text(temp_ss.str())) {
-        renderer.draw_text(glyphs.value(), 0.05f + icon_w + 0.02f, 0.40f, 1.0f);
+        for (const auto& g : glyphs.value()) temp_w += g.advance / (float)renderer.width();
+        float temp_x = left_col_right - temp_w - 0.02f;
+        renderer.draw_text(glyphs.value(), temp_x, 0.11f, 1.0f);
     }
 
-    // 6. Draw Description (Below Icon)
-    text_renderer.set_pixel_size(0, 56);
-    auto desc_lines = wrap_text(data.description, 28);
-    float text_y = 0.62f;
+    // =========================================================
+    // ROW 2: Date & City (centered)    (y = 0.13 - 0.18)
+    // =========================================================
+    std::stringstream date_ss;
+    date_ss << std::put_time(parts, "%a, %b %d") << " | " << data.city;
+    text_renderer.set_pixel_size(0, 24);
+    if (auto glyphs = text_renderer.shape_text(date_ss.str())) {
+        float date_w = 0.0f;
+        for (const auto& g : glyphs.value()) date_w += g.advance / (float)renderer.width();
+        float date_x = lx + (left_w - date_w) / 2.0f;
+        renderer.draw_text(glyphs.value(), date_x, 0.16f, 1.0f, 0.6f, 0.6f, 0.6f, 1.0f);
+    }
+
+    // =========================================================
+    // ROW 3: Weather Icon           (y = 0.19 - 0.54)
+    // =========================================================
+    float icon_h = 0.33f;
+    float icon_w = icon_h / aspect; // Enforces perfect square on 16:9 screen
+    float icon_x = lx + (left_w - icon_w) / 2.0f; // Center horizontally
+    
+    // Day/Night logic based on sunrise/sunset
+    bool is_night = false;
+    if (data.sunrise.length() == 5 && data.sunset.length() == 5) {
+        try {
+            int now_m = parts->tm_hour * 60 + parts->tm_min;
+            int rise_m = std::stoi(data.sunrise.substr(0,2)) * 60 + std::stoi(data.sunrise.substr(3,2));
+            int set_m = std::stoi(data.sunset.substr(0,2)) * 60 + std::stoi(data.sunset.substr(3,2));
+            if (now_m < rise_m || now_m > set_m) is_night = true;
+        } catch(...) {}
+    }
+    
+    renderer.draw_animated_weather(data.weather_code, icon_x, 0.19f, icon_w, icon_h, time_sec, is_night);
+
+    // =========================================================
+    // ROW 4: Description, Warnings, Tip  (y = 0.55 - 0.68)
+    // =========================================================
+    float text_y = 0.55f;
+    text_renderer.set_pixel_size(0, 26);
+    auto desc_lines = wrap_text(data.description, 52);
     for (const auto& line : desc_lines) {
         if (auto glyphs = text_renderer.shape_text(line)) {
-            renderer.draw_text(glyphs.value(), 0.05f, text_y, 1.0f);
+            renderer.draw_text(glyphs.value(), lx, text_y, 1.0f);
         }
-        text_y += 0.06f;
+        text_y += 0.035f;
     }
 
-    // 7. Draw Details (Humidity, Wind)
-    text_renderer.set_pixel_size(0, 36);
-    std::stringstream detail_ss;
-    detail_ss << "Humidity: " << (int)data.humidity << "% | Wind: " << data.wind_speed << " km/h";
-    if (auto glyphs = text_renderer.shape_text(detail_ss.str())) {
-        renderer.draw_text(glyphs.value(), 0.05f, text_y + 0.02f, 1.0f, 0.6f, 0.6f, 0.7f, 1.0f);
+    // Warnings Logic (Color Coded)
+    text_renderer.set_pixel_size(0, 20);
+    // 1. Glatteis / Black Ice Warning (Temp < 3°C + Rain/Snow)
+    if (data.temperature < 3.0f && data.weather_code >= 51 && data.weather_code <= 86) {
+        if (auto glyphs = text_renderer.shape_text("WARNING: Glatteis / Ice possible!")) {
+            renderer.draw_text(glyphs.value(), lx, text_y, 1.0f, 1.0f, 0.4f, 0.2f, 1.0f); // Bright Red/Orange
+            text_y += 0.030f;
+        }
+    }
+    // 2. High UV Index Warning
+    else if (data.uv_index >= 6.0f) {
+        std::stringstream uv_warn;
+        uv_warn << "WARNING: High UV Index (" << std::fixed << std::setprecision(1) << data.uv_index << ")!";
+        if (auto glyphs = text_renderer.shape_text(uv_warn.str())) {
+            renderer.draw_text(glyphs.value(), lx, text_y, 1.0f, 1.0f, 0.6f, 0.2f, 1.0f); // Orange
+            text_y += 0.030f;
+        }
+    }
+    // 3. Storm Warning
+    else if (data.weather_code >= 95) {
+        if (auto glyphs = text_renderer.shape_text("WARNING: Heavy Thunderstorms!")) {
+            renderer.draw_text(glyphs.value(), lx, text_y, 1.0f, 0.8f, 0.3f, 0.8f, 1.0f); // Purple
+            text_y += 0.030f;
+        }
+    }
+
+    // Recommendation tip
+    std::string recommendation = "Enjoy the weather!";
+    switch (data.weather_code) {
+        case 0: case 1: case 2: 
+            if (data.temperature < 15.0f) {
+                recommendation = "Clear but chilly! Wear a jacket.";
+            } else {
+                recommendation = "Great day! Wear sunglasses."; 
+            }
+            break;
+        case 3: case 45: case 48: recommendation = "A bit gloomy. Light jacket."; break;
+        case 51: case 53: case 55: case 56: case 57: recommendation = "Drizzling. Bring a light coat."; break;
+        case 61: case 63: case 65: case 66: case 67: recommendation = "Raining! Don't forget your umbrella."; break;
+        case 71: case 73: case 75: case 77: case 85: case 86: recommendation = "Snowing! Warm jacket & gloves."; break;
+        case 80: case 81: case 82: recommendation = "Showers. Keep an umbrella handy."; break;
+        case 95: case 96: case 99: recommendation = "Thunderstorms. Stay indoors."; break;
+    }
+    
+    if (auto glyphs = text_renderer.shape_text("Tip: " + recommendation)) {
+        renderer.draw_text(glyphs.value(), lx, text_y, 1.0f, 0.4f, 0.8f, 1.0f, 1.0f);
+    }
+    text_y += 0.045f;
+
+    // =========================================================
+    // ROW 5: Weather Metrics Grid   (y = ~0.66 - 0.78)
+    // =========================================================
+    text_renderer.set_pixel_size(0, 18);
+    float col_1_x = lx;
+    float col_2_x = lx + 0.20f;
+
+    // Row 1: Wind & Humidity
+    std::stringstream wind_ss; wind_ss << "Wind: " << std::fixed << std::setprecision(1) << data.wind_speed << " km/h";
+    if (auto glyphs = text_renderer.shape_text(wind_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    std::stringstream hum_ss; hum_ss << "Humidity: " << (int)data.humidity << "%";
+    if (auto glyphs = text_renderer.shape_text(hum_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    text_y += 0.03f;
+
+    // Row 2: Visibility & Feels Like
+    std::stringstream vis_ss; vis_ss << "Vis: " << std::fixed << std::setprecision(1) << (data.visibility / 1000.0f) << " km";
+    if (auto glyphs = text_renderer.shape_text(vis_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    std::stringstream app_ss; app_ss << "Feels: " << std::fixed << std::setprecision(1) << data.feels_like << "\xC2\xB0" << "C";
+    if (auto glyphs = text_renderer.shape_text(app_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    text_y += 0.03f;
+    
+    // Row 3: UV Index & Sunrise/Sunset
+    std::stringstream uv_ss; uv_ss << "UV Index: " << std::fixed << std::setprecision(1) << data.uv_index;
+    if (auto glyphs = text_renderer.shape_text(uv_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    std::stringstream sun_ss;
+    sun_ss << "Rise " << (data.sunrise.empty() ? "--:--" : data.sunrise) 
+           << " | Set " << (data.sunset.empty() ? "--:--" : data.sunset);
+    if (auto glyphs = text_renderer.shape_text(sun_ss.str())) {
+        renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.9f, 0.7f, 0.3f, 1.0f);
     }
 }
 

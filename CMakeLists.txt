@@ -78,8 +78,10 @@ set(SRC_FILES
     src/modules/audio_player.cpp
     src/modules/container_reader.cpp
     src/modules/weather_module.cpp
+    src/modules/config_module.cpp
     src/modules/stock_module.cpp
     src/modules/screenshot_module.cpp
+    src/modules/news_module.cpp
 )
 
 add_executable(nuc_display ${SRC_FILES})
@@ -106,16 +108,6 @@ target_link_libraries(nuc_display
     Threads::Threads
     m
 )
-
-# --- Asset Generation ---
-message(STATUS "Generating transparent weather icons via Python script...")
-execute_process(
-    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_icons.py
-    RESULT_VARIABLE ICON_GEN_RES
-)
-if (NOT ICON_GEN_RES EQUAL 0)
-    message(WARNING "Failed to generate PNG icons. Ensure librsvg2-bin or Python cairosvg is installed.")
-endif()
 
 # --- Testing and Coverage ---
 enable_testing()

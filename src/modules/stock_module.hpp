@@ -14,12 +14,24 @@ enum class StockError {
     ParseError
 };
 
+struct StockChart {
+    std::string label; // "1D", "5D", "1M", "1Y"
+    float change_percent;
+    std::vector<float> prices; // Resampled to e.g. 100 points
+};
+
 struct StockData {
     std::string symbol;
     std::string name;
+    std::string currency_symbol;
     float current_price;
-    float change_percent;
-    std::vector<float> prices; // Historical points for sparkline
+    std::vector<StockChart> charts;
+};
+
+struct StockConfig {
+    std::string symbol;
+    std::string name;
+    std::string currency_symbol;
 };
 
 class StockModule {
@@ -27,7 +39,7 @@ public:
     StockModule();
     ~StockModule();
 
-    void add_symbol(const std::string& symbol, const std::string& name);
+    void add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol = "$");
     
     // Blocking fetch of all configured symbols (can be run in thread pool)
     void update_all_data();
@@ -37,9 +49,9 @@ public:
 
 private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
-    std::expected<StockData, StockError> fetch_stock(const std::string& symbol, const std::string& name);
+    std::expected<StockData, StockError> fetch_stock(const StockConfig& config);
 
-    std::vector<std::pair<std::string, std::string>> symbols_;
+    std::vector<StockConfig> symbols_;
     std::vector<StockData> stock_data_;
     
     size_t current_index_ = 0;
