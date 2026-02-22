@@ -28,11 +28,7 @@ int main() {
 
     std::cout << "Starting NUC Display Engine (C++23 Modernized)...\n";
 
-    // 1. Initialize Thread Pool
-    utils::ThreadPool thread_pool(4);
-    std::cout << "[Core] Initialized Thread Pool.\n";
-
-    // 2. Initialize Display Manager
+    // 1. Initialize Display Manager
     auto dm_result = core::DisplayManager::create();
     if (!dm_result) {
         std::cerr << "[Core] Failed to initialize Display Manager: " 
@@ -41,6 +37,10 @@ int main() {
     }
     auto display = std::move(dm_result.value());
     std::cout << "[Core] Display Engine Running at " << display->width() << "x" << display->height() << "\n";
+
+    // 2. Initialize Thread Pool
+    utils::ThreadPool thread_pool(4);
+    std::cout << "[Core] Initialized Thread Pool.\n";
 
     // 3. Initialize Modular Components (Architecture Demonstration)
     

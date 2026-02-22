@@ -4,6 +4,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2.h>
+#include <cerrno>
+#include <cstring>
+#include <vector>
 
 namespace nuc_display::core {
 
@@ -32,7 +37,7 @@ std::expected<std::unique_ptr<DisplayManager>, DisplayError> DisplayManager::cre
     if (auto res = dm->init_gbm(); !res) return std::unexpected(res.error());
     if (auto res = dm->init_egl(); !res) return std::unexpected(res.error());
     
-    return std::move(dm);
+    return dm;
 }
 
 DisplayManager::~DisplayManager() {
@@ -47,9 +52,13 @@ DisplayManager::~DisplayManager() {
     }
 
     // Clean up GBM
-    if (previous_bo_) {
-        drmModeRmFB(drm_fd_, previous_fb_);
-        gbm_surface_release_buffer(gbm_surface_, previous_bo_);
+    if (current_bo_) {
+        drmModeRmFB(drm_fd_, current_fb_);
+        gbm_surface_release_buffer(gbm_surface_, current_bo_);
+    }
+    if (next_bo_) {
+        drmModeRmFB(drm_fd_, next_fb_);
+        gbm_surface_release_buffer(gbm_surface_, next_bo_);
     }
     if (gbm_surface_) gbm_surface_destroy(gbm_surface_);
     if (gbm_dev_) gbm_device_destroy(gbm_dev_);
@@ -131,6 +140,7 @@ std::expected<void, DisplayError> DisplayManager::init_gbm() {
     gbm_dev_ = gbm_create_device(drm_fd_);
     if (!gbm_dev_) return std::unexpected(DisplayError::GbmDeviceFailed);
 
+    std::cout << "  - gbm_surface_create..." << std::endl;
     gbm_surface_ = gbm_surface_create(gbm_dev_,
                                       mode_.hdisplay,
                                       mode_.vdisplay,
@@ -142,11 +152,18 @@ std::expected<void, DisplayError> DisplayManager::init_gbm() {
 }
 
 std::expected<void, DisplayError> DisplayManager::init_egl() {
-    EGLint major, minor;
-    egl_display_ = eglGetDisplay((EGLNativeDisplayType)gbm_dev_);
+    PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display = 
+        (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
+
+    if (get_platform_display) {
+        egl_display_ = get_platform_display(EGL_PLATFORM_GBM_KHR, (void*)gbm_dev_, nullptr);
+    } else {
+        egl_display_ = eglGetDisplay((EGLNativeDisplayType)gbm_dev_);
+    }
+
     if (egl_display_ == EGL_NO_DISPLAY) return std::unexpected(DisplayError::EglDisplayFailed);
 
-    if (!eglInitialize(egl_display_, &major, &minor)) return std::unexpected(DisplayError::EglInitializeFailed);
+    if (!eglInitialize(egl_display_, nullptr, nullptr)) return std::unexpected(DisplayError::EglInitializeFailed);
 
     eglBindAPI(EGL_OPENGL_ES_API);
 
@@ -176,7 +193,6 @@ std::expected<void, DisplayError> DisplayManager::init_egl() {
     }
     
     if (!found_config) {
-        std::cerr << "Falling back to first available EGL config\n";
         egl_config_ = configs[0];
     }
 
@@ -196,14 +212,22 @@ std::expected<void, DisplayError> DisplayManager::init_egl() {
     return {};
 }
 
-void DisplayManager::page_flip_handler(int fd, unsigned int frame, unsigned int sec, unsigned int usec, void *data) {
+void DisplayManager::page_flip_handler(int fd, unsigned int /*frame*/, unsigned int /*sec*/, unsigned int /*usec*/, void *data) {
     auto dm = static_cast<DisplayManager*>(data);
-    dm->waiting_for_flip_ = false;
     
-    if (dm->previous_bo_) {
-        drmModeRmFB(fd, dm->previous_fb_);
-        gbm_surface_release_buffer(dm->gbm_surface_, dm->previous_bo_);
+    // The previous buffer is now safe to release
+    if (dm->current_bo_) {
+        drmModeRmFB(fd, dm->current_fb_);
+        gbm_surface_release_buffer(dm->gbm_surface_, dm->current_bo_);
     }
+
+    // Advance buffers
+    dm->current_bo_ = dm->next_bo_;
+    dm->current_fb_ = dm->next_fb_;
+    dm->next_bo_ = nullptr;
+    dm->next_fb_ = 0;
+    
+    dm->waiting_for_flip_ = false;
 }
 
 void DisplayManager::swap_buffers() {
@@ -222,25 +246,29 @@ bool DisplayManager::page_flip() {
     
     uint32_t fb;
     if (drmModeAddFB(drm_fd_, mode_.hdisplay, mode_.vdisplay, 24, 32, pitch, handle, &fb)) {
-        std::cerr << "Failed to create DRM Framebuffer\n";
+        std::cerr << "Failed to create DRM Framebuffer: " << std::strerror(errno) << "\n";
         return false;
     }
 
-    if (!previous_bo_) {
+    if (!current_bo_) {
+        // First frame: Set CRTC
         if (drmModeSetCrtc(drm_fd_, crtc_id_, fb, 0, 0, &drm_connector_->connector_id, 1, &mode_)) {
-            std::cerr << "Failed to set CRTC\n";
+            std::cerr << "Failed to set CRTC: " << std::strerror(errno) << "\n";
             return false;
         }
+        current_bo_ = bo;
+        current_fb_ = fb;
     } else {
+        // Subsequent frames: Page Flip
+        next_bo_ = bo;
+        next_fb_ = fb;
         if (drmModePageFlip(drm_fd_, crtc_id_, fb, DRM_MODE_PAGE_FLIP_EVENT, this)) {
-            std::cerr << "Page flip failed\n";
+            std::cerr << "Page flip failed: " << std::strerror(errno) << "\n";
             return false;
         }
         waiting_for_flip_ = true;
     }
 
-    previous_bo_ = bo;
-    previous_fb_ = fb;
     return true;
 }
 

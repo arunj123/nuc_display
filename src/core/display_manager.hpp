@@ -76,8 +76,10 @@ private:
     struct gbm_surface* gbm_surface_ = nullptr;
     
     // Page Flip State
-    struct gbm_bo* previous_bo_ = nullptr;
-    uint32_t previous_fb_ = 0;
+    struct gbm_bo* current_bo_ = nullptr;
+    uint32_t current_fb_ = 0;
+    struct gbm_bo* next_bo_ = nullptr;
+    uint32_t next_fb_ = 0;
     bool waiting_for_flip_ = false;
 
     // EGL State
