@@ -7,9 +7,12 @@
 #include <memory>
 
 #include "core/display_manager.hpp"
+#include "core/renderer.hpp"
 #include "utils/thread_pool.hpp"
 #include "modules/image_loader.hpp"
 #include "modules/text_renderer.hpp"
+#include "modules/weather_module.hpp"
+#include "modules/screenshot_module.hpp"
 #include "modules/video_decoder.hpp"
 #include "modules/audio_player.hpp"
 #include "modules/container_reader.hpp"
@@ -42,12 +45,27 @@ int main() {
     utils::ThreadPool thread_pool(4);
     std::cout << "[Core] Initialized Thread Pool.\n";
 
-    // 3. Initialize Modular Components (Architecture Demonstration)
+    // 3. Initialize Modular Components
+    auto renderer = std::make_unique<core::Renderer>();
+    renderer->init(display->width(), display->height());
+    
+    // Correction for flipped/rotated display as reported by user
+    // We can adjust these values if needed (0, 90, 180, 270)
+    renderer->set_rotation(0); 
+    renderer->set_flip(false, false); 
     
     // Text Rendering
     auto text_renderer = std::make_unique<modules::TextRenderer>();
-    // text_renderer->load("path/to/font.ttf"); // Layout only for now
+    if (auto res = text_renderer->load("assets/fonts/ubuntu.ttf"); !res) {
+        std::cerr << "[Core] Failed to load Ubuntu font. Text rendering will fail.\n";
+    }
 
+    // Weather Module
+    auto weather_module = std::make_unique<modules::WeatherModule>();
+    std::optional<modules::WeatherData> weather_data;
+    bool screenshot_taken = false;
+    auto screenshot_module = std::make_unique<modules::ScreenshotModule>();
+    
     // Image Loading
     auto image_loader = std::make_unique<modules::ImageLoader>();
 
@@ -64,32 +82,51 @@ int main() {
 
     std::cout << "[Modules] All modular components initialized (Architecture Ready).\n";
 
-    // 4. Example Asynchronous Operation
-    auto future_media_task = thread_pool.enqueue([&image_loader]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        // In a real scenario, this would load a heavy resource
-        // image_loader->load("test.jpg");
-        return "Async Media Load Simulation Complete!";
+    // 4. Initial Weather Fetch
+    auto weather_task = thread_pool.enqueue([&weather_module]() {
+        // Fetch for London or a configurable location
+        return weather_module->fetch_current_weather(51.5074f, -0.1278f);
     });
+
+    auto last_weather_update = std::chrono::steady_clock::now();
 
     float color_offset = 0.0f;
 
     std::cout << "--- Starting main loop ---\n";
 
     while (g_running) {
-        // --- CHECK ASYNC TASKS ---
-        if (future_media_task.valid() && future_media_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            std::cout << "[Async] " << future_media_task.get() << "\n";
+        // --- CHECK WEATHER UPDATES (Every 10 mins) ---
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_weather_update).count() >= 10) {
+            weather_task = thread_pool.enqueue([&weather_module]() {
+                return weather_module->fetch_current_weather(51.5074f, -0.1278f);
+            });
+            last_weather_update = now;
         }
 
-        // --- RENDER GL FRAME ---
-        float r = 0.5f + 0.5f * std::sin(color_offset);
-        float g = 0.5f + 0.5f * std::sin(color_offset + 2.094f);
-        float b = 0.5f + 0.5f * std::sin(color_offset + 4.188f);
-        color_offset += 0.01f;
+        if (weather_task.valid() && weather_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            auto result = weather_task.get();
+            if (result) {
+                weather_data = result.value();
+                std::cout << "[Weather] Updated: " << weather_data->temperature << "°C, " << weather_data->description << "\n";
+            }
+        }
 
-        glClearColor(r, g, b, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // --- RENDER WEATHER DASHBOARD ---
+        if (weather_data) {
+            weather_module->render(*renderer, *image_loader, *text_renderer, weather_data.value());
+            
+            // Take a screenshot once for verification
+            if (!screenshot_taken && weather_data) {
+                if (auto cap_res = screenshot_module->capture(display->width(), display->height()); cap_res) {
+                    screenshot_module->save("debug_weather.png");
+                    screenshot_taken = true;
+                    std::cout << "[Core] Debug screenshot saved.\n";
+                }
+            }
+        } else {
+            renderer->clear(0.1f, 0.1f, 0.1f, 1.0f);
+        }
 
         // --- SWAP BUFFERS ---
         display->swap_buffers();

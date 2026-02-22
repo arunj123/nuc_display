@@ -85,7 +85,7 @@ std::expected<void, DisplayError> DisplayManager::init_drm() {
         if (drm_fd_ >= 0) {
             drm_resources_ = drmModeGetResources(drm_fd_);
             if (drm_resources_ && drm_resources_->count_connectors > 0) {
-                std::cout << "Successfully opened " << path << std::endl;
+                std::cout << "Successfully opened " << path << " (connectors: " << drm_resources_->count_connectors << ")" << std::endl;
                 break;
             }
             if (drm_resources_) {
@@ -107,10 +107,13 @@ std::expected<void, DisplayError> DisplayManager::init_drm() {
         if (!conn) continue;
 
         if (conn->connection == DRM_MODE_CONNECTED && conn->count_modes > 0) {
+            std::cout << "  - Connector " << i << " is CONNECTED with " << conn->count_modes << " modes." << std::endl;
             drm_connector_ = conn;
             mode_ = conn->modes[0]; // Highest res
             connected = true;
             break;
+        } else {
+            std::cout << "  - Connector " << i << " status: " << (conn->connection == DRM_MODE_CONNECTED ? "Connected (no modes)" : "Disconnected") << std::endl;
         }
         drmModeFreeConnector(conn);
     }
@@ -118,6 +121,12 @@ std::expected<void, DisplayError> DisplayManager::init_drm() {
     if (!connected) return std::unexpected(DisplayError::DrmConnectorFailed);
 
     std::cout << "Found Display! " << mode_.hdisplay << "x" << mode_.vdisplay << std::endl;
+
+    if (drmSetMaster(drm_fd_) != 0) {
+        std::cout << "  - Warning: Failed to set DRM master: " << std::strerror(errno) << " (ignoring for now)" << std::endl;
+    } else {
+        std::cout << "  - Successfully acquired DRM master." << std::endl;
+    }
 
     drm_encoder_ = drmModeGetEncoder(drm_fd_, drm_connector_->encoders[0]);
     if (!drm_encoder_) return std::unexpected(DisplayError::DrmEncoderFailed);
@@ -140,12 +149,45 @@ std::expected<void, DisplayError> DisplayManager::init_gbm() {
     gbm_dev_ = gbm_create_device(drm_fd_);
     if (!gbm_dev_) return std::unexpected(DisplayError::GbmDeviceFailed);
 
-    std::cout << "  - gbm_surface_create..." << std::endl;
+    std::cout << "  - GBM Backend: " << gbm_device_get_backend_name(gbm_dev_) << std::endl;
+
+    // Check for DRM Master status
+    drm_magic_t magic;
+    if (drmGetMagic(drm_fd_, &magic) == 0) {
+        if (drmAuthMagic(drm_fd_, magic) != 0) {
+             std::cout << "  - Warning: Could not authenticate DRM magic (might not be master)" << std::endl;
+        }
+    }
+
+    if (!gbm_device_is_format_supported(gbm_dev_, GBM_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING)) {
+        std::cout << "  - WARNING: GBM_FORMAT_ARGB8888 not supported for scanout+rendering." << std::endl;
+    }
+
+    std::cout << "  - gbm_surface_create (ARGB8888, " << mode_.hdisplay << "x" << mode_.vdisplay << ")..." << std::endl;
     gbm_surface_ = gbm_surface_create(gbm_dev_,
                                       mode_.hdisplay,
                                       mode_.vdisplay,
-                                      GBM_FORMAT_XRGB8888,
+                                      GBM_FORMAT_ARGB8888,
                                       GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    
+    if (!gbm_surface_) {
+        std::cout << "  - Retrying gbm_surface_create with XRGB8888..." << std::endl;
+        gbm_surface_ = gbm_surface_create(gbm_dev_,
+                                          mode_.hdisplay,
+                                          mode_.vdisplay,
+                                          GBM_FORMAT_XRGB8888,
+                                          GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    }
+
+    if (!gbm_surface_) {
+        std::cout << "  - Retrying gbm_surface_create with no flags (only RENDERING)..." << std::endl;
+        gbm_surface_ = gbm_surface_create(gbm_dev_,
+                                          mode_.hdisplay,
+                                          mode_.vdisplay,
+                                          GBM_FORMAT_XRGB8888,
+                                          GBM_BO_USE_RENDERING);
+    }
+
     if (!gbm_surface_) return std::unexpected(DisplayError::GbmSurfaceFailed);
 
     return {};

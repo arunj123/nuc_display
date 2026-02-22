@@ -22,7 +22,13 @@ add_test(NAME UtilsTests COMMAND test_utils)
 # --- Module Tests ---
 # Note: Testing modules that depend on hardware (DRM, VA-API) is tricky.
 # We will focus on logic and state for now.
-add_executable(test_modules test_modules.cpp ../src/modules/image_loader.cpp ../src/modules/text_renderer.cpp)
+add_executable(test_modules 
+    test_modules.cpp 
+    ../src/modules/image_loader.cpp 
+    ../src/modules/text_renderer.cpp
+    ../src/modules/weather_module.cpp
+    ../src/core/renderer.cpp
+)
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})
 target_link_libraries(test_modules 
     GTest::gtest_main
@@ -30,5 +36,8 @@ target_link_libraries(test_modules
     ${HARFBUZZ_LIBRARIES}
     ${LIBJPEG_LIBRARIES}
     ${LIBPNG_LIBRARIES}
+    ${GLESv2_LIBRARIES}
+    ${CURL_LIBRARIES}
+    nlohmann_json::nlohmann_json
 )
 add_test(NAME ModuleTests COMMAND test_modules)

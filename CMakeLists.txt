@@ -10,6 +10,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 
 find_package(PkgConfig REQUIRED)
 
+include(FetchContent)
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
+
 # Core Graphics
 pkg_check_modules(DRM REQUIRED libdrm)
 pkg_check_modules(GBM REQUIRED gbm)
@@ -38,6 +45,9 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(LIBJPEG REQUIRED libjpeg)
 pkg_check_modules(LIBPNG REQUIRED libpng)
 
+# Networking
+pkg_check_modules(CURL REQUIRED libcurl)
+
 # Concurrency support
 find_package(Threads REQUIRED)
 
@@ -53,6 +63,7 @@ include_directories(
     ${HARFBUZZ_INCLUDE_DIRS}
     ${LIBJPEG_INCLUDE_DIRS}
     ${LIBPNG_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
     src
 )
 
@@ -60,11 +71,14 @@ include_directories(
 set(SRC_FILES
     src/main.cpp
     src/core/display_manager.cpp
+    src/core/renderer.cpp
     src/modules/image_loader.cpp
     src/modules/text_renderer.cpp
     src/modules/video_decoder.cpp
     src/modules/audio_player.cpp
     src/modules/container_reader.cpp
+    src/modules/weather_module.cpp
+    src/modules/screenshot_module.cpp
 )
 
 add_executable(nuc_display ${SRC_FILES})
@@ -86,9 +100,21 @@ target_link_libraries(nuc_display
     ${HARFBUZZ_LIBRARIES}
     ${LIBJPEG_LIBRARIES}
     ${LIBPNG_LIBRARIES}
+    ${CURL_LIBRARIES}
+    nlohmann_json::nlohmann_json
     Threads::Threads
     m
 )
+
+# --- Asset Generation ---
+message(STATUS "Generating transparent weather icons via Python script...")
+execute_process(
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_icons.py
+    RESULT_VARIABLE ICON_GEN_RES
+)
+if (NOT ICON_GEN_RES EQUAL 0)
+    message(WARNING "Failed to generate PNG icons. Ensure librsvg2-bin or Python cairosvg is installed.")
+endif()
 
 # --- Testing and Coverage ---
 enable_testing()

@@ -9,13 +9,29 @@
 namespace nuc_display::modules {
 
 std::expected<void, MediaError> ImageLoader::load(const std::string& filepath) {
-    if (filepath.ends_with(".jpg") || filepath.ends_with(".jpeg")) {
+    FILE* file = std::fopen(filepath.c_str(), "rb");
+    if (!file) {
+        std::cerr << "Failed to open image file: " << filepath << "\n";
+        return std::unexpected(MediaError::FileNotFound);
+    }
+
+    uint8_t header[8];
+    if (std::fread(header, 1, 8, file) != 8) {
+        std::fclose(file);
+        return std::unexpected(MediaError::DecodeFailed);
+    }
+    std::fclose(file);
+
+    // JPEG: FF D8 FF
+    if (header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) {
         return load_jpeg(filepath);
-    } else if (filepath.ends_with(".png")) {
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47) {
         return load_png(filepath);
     }
     
-    std::cerr << "Unsupported image format: " << filepath << "\n";
+    std::cerr << "Unsupported image format (signature mismatch): " << filepath << "\n";
     return std::unexpected(MediaError::UnsupportedFormat);
 }
 
