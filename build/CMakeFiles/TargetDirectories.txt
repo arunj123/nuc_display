@@ -1,0 +1,3 @@
+/home/arun/projects/pico_display/native_display_app/build/CMakeFiles/native_display_app.dir
+/home/arun/projects/pico_display/native_display_app/build/CMakeFiles/edit_cache.dir
+/home/arun/projects/pico_display/native_display_app/build/CMakeFiles/rebuild_cache.dir
