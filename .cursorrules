@@ -1,0 +1,41 @@
+# NUC Display Development Rules (AI Instructions)
+
+You are assisting in the development of a bare-metal, high-performance Linux graphics system refactored to modern C++. Adhere strictly to these principles:
+
+## 1. Modern C++ Architecture
+- Use **C++20** or **C++23** standards.
+- Prefer **Concepts** for template constraints.
+- Utilize **Coroutines** for asynchronous operations where appropriate.
+- Use `enum class` for all enumerations.
+- Leverage `constexpr` and `consteval` for compile-time computations.
+- Design should be **modular** and **extensible**, avoiding monolithic files.
+- Use **RAII** for all resource management (DRM, GBM, EGL, VA-API, File Descriptors).
+
+## 2. Concurrency & Asynchrony
+- Implement a **Thread Pool** using standard C++ libraries (`std::thread`, `std::mutex`, `std::condition_variable`, `std::stop_token`).
+- All major modules (Image Loading, Video Decoding, Audio) should run on their own threads or via the thread pool.
+- Results should be passed back **asynchronously** using futures, promises, or callback mechanisms compatible with the thread pool.
+- Use modern synchronization primitives (`std::atomic`, `std::latch`, `std::barrier`).
+
+## 3. High Performance & Low Latency
+- Prioritize native Linux APIs (`libdrm`, `gbm`, `libva`).
+- Avoid any high-level wrappers or libraries (SDL2, GLFW, etc.) unless specifically asked by the user.
+- Use **VA-API** (Intel hardware) for all video decoding tasks to offload from CPU.
+- Ensure all rendering paths utilize GPU hardware triggers (VSync via PageFlip events).
+- Minimize memory allocations in the hot rendering loop.
+
+## 4. Intel-Specific Optimization
+- Assume Intel Graphics Hardware (e.g., UHD Graphics / GeminiLake).
+- Focus on `i915` and `xe` driver compatibility.
+- Utilize Intel-specific hardware capabilities for image loading and video processing.
+
+## 5. Stability & Hardware Awareness
+- Always include error handling for display disappearance (HDMI unplug).
+- Check for DRM master rights and `/dev/dri/cardX` enumeration robustness.
+- Ensure signal handling (SIGINT/SIGTERM) correctly restores the display state.
+- Use verbose logging for hardware initialization errors.
+
+## 6. Coding Style
+- Minimalistic and readable code; avoid unnecessary "black box" abstractions.
+- Follow modern C++ best practices (Core Guidelines).
+- Use `std::expected` (C++23) or similar for robust error handling instead of exceptions where performance is critical.

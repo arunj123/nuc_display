@@ -57,13 +57,23 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/arun/projects/pico_display/native_display_app
+CMAKE_SOURCE_DIR = /home/arun/projects/nuc_display
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/arun/projects/pico_display/native_display_app/build
+CMAKE_BINARY_DIR = /home/arun/projects/nuc_display/build
 
 #=============================================================================
 # Targets provided globally by CMake.
+
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
+	/usr/bin/ctest --force-new-ctest-process $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
 
 # Special rule for the target edit_cache
 edit_cache:
@@ -85,11 +95,56 @@ rebuild_cache:
 rebuild_cache/fast: rebuild_cache
 .PHONY : rebuild_cache/fast
 
+# Special rule for the target list_install_components
+list_install_components:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"gmock\" \"gtest\""
+.PHONY : list_install_components
+
+# Special rule for the target list_install_components
+list_install_components/fast: list_install_components
+.PHONY : list_install_components/fast
+
+# Special rule for the target install
+install: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
+	/usr/bin/cmake -P cmake_install.cmake
+.PHONY : install
+
+# Special rule for the target install
+install/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
+	/usr/bin/cmake -P cmake_install.cmake
+.PHONY : install/fast
+
+# Special rule for the target install/local
+install/local: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
+	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
+.PHONY : install/local
+
+# Special rule for the target install/local
+install/local/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
+	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
+.PHONY : install/local/fast
+
+# Special rule for the target install/strip
+install/strip: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
+	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
+.PHONY : install/strip
+
+# Special rule for the target install/strip
+install/strip/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
+	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
+.PHONY : install/strip/fast
+
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/arun/projects/pico_display/native_display_app/build/CMakeFiles /home/arun/projects/pico_display/native_display_app/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/arun/projects/nuc_display/build/CMakeFiles /home/arun/projects/nuc_display/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/arun/projects/pico_display/native_display_app/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/arun/projects/nuc_display/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -117,41 +172,263 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named native_display_app
+# Target rules for targets named nuc_display
 
 # Build rule for target.
-native_display_app: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 native_display_app
-.PHONY : native_display_app
+nuc_display: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 nuc_display
+.PHONY : nuc_display
 
 # fast build rule for target.
-native_display_app/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/native_display_app.dir/build.make CMakeFiles/native_display_app.dir/build
-.PHONY : native_display_app/fast
+nuc_display/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/build
+.PHONY : nuc_display/fast
 
-src/main.o: src/main.c.o
+#=============================================================================
+# Target rules for targets named test_utils
+
+# Build rule for target.
+test_utils: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_utils
+.PHONY : test_utils
+
+# fast build rule for target.
+test_utils/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_utils.dir/build.make tests/CMakeFiles/test_utils.dir/build
+.PHONY : test_utils/fast
+
+#=============================================================================
+# Target rules for targets named test_modules
+
+# Build rule for target.
+test_modules: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_modules
+.PHONY : test_modules
+
+# fast build rule for target.
+test_modules/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_modules.dir/build.make tests/CMakeFiles/test_modules.dir/build
+.PHONY : test_modules/fast
+
+#=============================================================================
+# Target rules for targets named gmock
+
+# Build rule for target.
+gmock: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gmock
+.PHONY : gmock
+
+# fast build rule for target.
+gmock/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/googletest-build/googlemock/CMakeFiles/gmock.dir/build.make _deps/googletest-build/googlemock/CMakeFiles/gmock.dir/build
+.PHONY : gmock/fast
+
+#=============================================================================
+# Target rules for targets named gmock_main
+
+# Build rule for target.
+gmock_main: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gmock_main
+.PHONY : gmock_main
+
+# fast build rule for target.
+gmock_main/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/googletest-build/googlemock/CMakeFiles/gmock_main.dir/build.make _deps/googletest-build/googlemock/CMakeFiles/gmock_main.dir/build
+.PHONY : gmock_main/fast
+
+#=============================================================================
+# Target rules for targets named gtest
+
+# Build rule for target.
+gtest: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gtest
+.PHONY : gtest
+
+# fast build rule for target.
+gtest/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/googletest-build/googletest/CMakeFiles/gtest.dir/build.make _deps/googletest-build/googletest/CMakeFiles/gtest.dir/build
+.PHONY : gtest/fast
+
+#=============================================================================
+# Target rules for targets named gtest_main
+
+# Build rule for target.
+gtest_main: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gtest_main
+.PHONY : gtest_main
+
+# fast build rule for target.
+gtest_main/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/build.make _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/build
+.PHONY : gtest_main/fast
+
+src/core/display_manager.o: src/core/display_manager.cpp.o
+.PHONY : src/core/display_manager.o
+
+# target to build an object file
+src/core/display_manager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.o
+.PHONY : src/core/display_manager.cpp.o
+
+src/core/display_manager.i: src/core/display_manager.cpp.i
+.PHONY : src/core/display_manager.i
+
+# target to preprocess a source file
+src/core/display_manager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.i
+.PHONY : src/core/display_manager.cpp.i
+
+src/core/display_manager.s: src/core/display_manager.cpp.s
+.PHONY : src/core/display_manager.s
+
+# target to generate assembly for a file
+src/core/display_manager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/core/display_manager.cpp.s
+.PHONY : src/core/display_manager.cpp.s
+
+src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
 # target to build an object file
-src/main.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/native_display_app.dir/build.make CMakeFiles/native_display_app.dir/src/main.c.o
-.PHONY : src/main.c.o
+src/main.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/main.cpp.o
+.PHONY : src/main.cpp.o
 
-src/main.i: src/main.c.i
+src/main.i: src/main.cpp.i
 .PHONY : src/main.i
 
 # target to preprocess a source file
-src/main.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/native_display_app.dir/build.make CMakeFiles/native_display_app.dir/src/main.c.i
-.PHONY : src/main.c.i
+src/main.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/main.cpp.i
+.PHONY : src/main.cpp.i
 
-src/main.s: src/main.c.s
+src/main.s: src/main.cpp.s
 .PHONY : src/main.s
 
 # target to generate assembly for a file
-src/main.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/native_display_app.dir/build.make CMakeFiles/native_display_app.dir/src/main.c.s
-.PHONY : src/main.c.s
+src/main.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/main.cpp.s
+.PHONY : src/main.cpp.s
+
+src/modules/audio_player.o: src/modules/audio_player.cpp.o
+.PHONY : src/modules/audio_player.o
+
+# target to build an object file
+src/modules/audio_player.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/audio_player.cpp.o
+.PHONY : src/modules/audio_player.cpp.o
+
+src/modules/audio_player.i: src/modules/audio_player.cpp.i
+.PHONY : src/modules/audio_player.i
+
+# target to preprocess a source file
+src/modules/audio_player.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/audio_player.cpp.i
+.PHONY : src/modules/audio_player.cpp.i
+
+src/modules/audio_player.s: src/modules/audio_player.cpp.s
+.PHONY : src/modules/audio_player.s
+
+# target to generate assembly for a file
+src/modules/audio_player.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/audio_player.cpp.s
+.PHONY : src/modules/audio_player.cpp.s
+
+src/modules/container_reader.o: src/modules/container_reader.cpp.o
+.PHONY : src/modules/container_reader.o
+
+# target to build an object file
+src/modules/container_reader.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/container_reader.cpp.o
+.PHONY : src/modules/container_reader.cpp.o
+
+src/modules/container_reader.i: src/modules/container_reader.cpp.i
+.PHONY : src/modules/container_reader.i
+
+# target to preprocess a source file
+src/modules/container_reader.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/container_reader.cpp.i
+.PHONY : src/modules/container_reader.cpp.i
+
+src/modules/container_reader.s: src/modules/container_reader.cpp.s
+.PHONY : src/modules/container_reader.s
+
+# target to generate assembly for a file
+src/modules/container_reader.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/container_reader.cpp.s
+.PHONY : src/modules/container_reader.cpp.s
+
+src/modules/image_loader.o: src/modules/image_loader.cpp.o
+.PHONY : src/modules/image_loader.o
+
+# target to build an object file
+src/modules/image_loader.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/image_loader.cpp.o
+.PHONY : src/modules/image_loader.cpp.o
+
+src/modules/image_loader.i: src/modules/image_loader.cpp.i
+.PHONY : src/modules/image_loader.i
+
+# target to preprocess a source file
+src/modules/image_loader.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/image_loader.cpp.i
+.PHONY : src/modules/image_loader.cpp.i
+
+src/modules/image_loader.s: src/modules/image_loader.cpp.s
+.PHONY : src/modules/image_loader.s
+
+# target to generate assembly for a file
+src/modules/image_loader.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/image_loader.cpp.s
+.PHONY : src/modules/image_loader.cpp.s
+
+src/modules/text_renderer.o: src/modules/text_renderer.cpp.o
+.PHONY : src/modules/text_renderer.o
+
+# target to build an object file
+src/modules/text_renderer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/text_renderer.cpp.o
+.PHONY : src/modules/text_renderer.cpp.o
+
+src/modules/text_renderer.i: src/modules/text_renderer.cpp.i
+.PHONY : src/modules/text_renderer.i
+
+# target to preprocess a source file
+src/modules/text_renderer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/text_renderer.cpp.i
+.PHONY : src/modules/text_renderer.cpp.i
+
+src/modules/text_renderer.s: src/modules/text_renderer.cpp.s
+.PHONY : src/modules/text_renderer.s
+
+# target to generate assembly for a file
+src/modules/text_renderer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/text_renderer.cpp.s
+.PHONY : src/modules/text_renderer.cpp.s
+
+src/modules/video_decoder.o: src/modules/video_decoder.cpp.o
+.PHONY : src/modules/video_decoder.o
+
+# target to build an object file
+src/modules/video_decoder.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.o
+.PHONY : src/modules/video_decoder.cpp.o
+
+src/modules/video_decoder.i: src/modules/video_decoder.cpp.i
+.PHONY : src/modules/video_decoder.i
+
+# target to preprocess a source file
+src/modules/video_decoder.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.i
+.PHONY : src/modules/video_decoder.cpp.i
+
+src/modules/video_decoder.s: src/modules/video_decoder.cpp.s
+.PHONY : src/modules/video_decoder.s
+
+# target to generate assembly for a file
+src/modules/video_decoder.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nuc_display.dir/build.make CMakeFiles/nuc_display.dir/src/modules/video_decoder.cpp.s
+.PHONY : src/modules/video_decoder.cpp.s
 
 # Help Target
 help:
@@ -160,11 +437,40 @@ help:
 	@echo "... clean"
 	@echo "... depend"
 	@echo "... edit_cache"
+	@echo "... install"
+	@echo "... install/local"
+	@echo "... install/strip"
+	@echo "... list_install_components"
 	@echo "... rebuild_cache"
-	@echo "... native_display_app"
+	@echo "... test"
+	@echo "... gmock"
+	@echo "... gmock_main"
+	@echo "... gtest"
+	@echo "... gtest_main"
+	@echo "... nuc_display"
+	@echo "... test_modules"
+	@echo "... test_utils"
+	@echo "... src/core/display_manager.o"
+	@echo "... src/core/display_manager.i"
+	@echo "... src/core/display_manager.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/modules/audio_player.o"
+	@echo "... src/modules/audio_player.i"
+	@echo "... src/modules/audio_player.s"
+	@echo "... src/modules/container_reader.o"
+	@echo "... src/modules/container_reader.i"
+	@echo "... src/modules/container_reader.s"
+	@echo "... src/modules/image_loader.o"
+	@echo "... src/modules/image_loader.i"
+	@echo "... src/modules/image_loader.s"
+	@echo "... src/modules/text_renderer.o"
+	@echo "... src/modules/text_renderer.i"
+	@echo "... src/modules/text_renderer.s"
+	@echo "... src/modules/video_decoder.o"
+	@echo "... src/modules/video_decoder.i"
+	@echo "... src/modules/video_decoder.s"
 .PHONY : help
 
 

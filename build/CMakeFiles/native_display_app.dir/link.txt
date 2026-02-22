@@ -1,1 +1,0 @@
-/usr/bin/cc CMakeFiles/native_display_app.dir/src/main.c.o -o native_display_app  -ldrm -lgbm -lEGL -lGLESv2 -lm 
