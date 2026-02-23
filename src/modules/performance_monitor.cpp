@@ -7,13 +7,22 @@ namespace nuc_display::modules {
 
 PerformanceMonitor::PerformanceMonitor() {
     this->start_time_ = std::chrono::steady_clock::now();
-    this->current_stats_ = {0, 0, 0, 0, 0};
+    this->current_stats_ = {0, 0, 0, 0, 0, 0};
     
     // Initialize CPU counters
     FILE* file = fopen("/proc/stat", "r");
     if (file) {
         fscanf(file, "cpu %llu %llu %llu %llu", &last_total_user_, &last_total_user_low_, &last_total_sys_, &last_total_idle_);
         fclose(file);
+    }
+
+    // Read max GPU frequency once
+    std::ifstream max_freq_file("/sys/class/drm/card1/gt_max_freq_mhz");
+    if (max_freq_file) {
+        max_freq_file >> this->current_stats_.gpu_max_freq_mhz;
+    } else {
+        std::ifstream max_freq_file0("/sys/class/drm/card0/gt_max_freq_mhz");
+        if (max_freq_file0) max_freq_file0 >> this->current_stats_.gpu_max_freq_mhz;
     }
 }
 
@@ -89,7 +98,7 @@ void PerformanceMonitor::log() const {
               << std::fixed << std::setprecision(1)
               << "CPU: " << current_stats_.cpu_usage << "% | "
               << "RAM: " << current_stats_.ram_usage_mb << " MB | "
-              << "GPU: " << current_stats_.gpu_freq_mhz << " MHz | "
+              << "GPU: " << (int)current_stats_.gpu_freq_mhz << "/" << (int)current_stats_.gpu_max_freq_mhz << " MHz | "
               << "Temp: " << current_stats_.temperature_c << "°C | "
               << "Uptime: " << (int)current_stats_.uptime_sec << "s"
               << std::endl;

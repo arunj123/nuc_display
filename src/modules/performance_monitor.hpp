@@ -12,6 +12,7 @@ struct PerformanceStats {
     double cpu_usage;        // Percentage (0.0 to 100.0)
     double ram_usage_mb;     // RSS in MB
     double gpu_freq_mhz;     // Actual frequency
+    double gpu_max_freq_mhz; // Maximum frequency for context
     double temperature_c;    // Temperature in Celsius
     double uptime_sec;       // Process uptime
 };

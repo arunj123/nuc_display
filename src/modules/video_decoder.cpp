@@ -246,6 +246,7 @@ void VideoDecoder::set_audio_enabled(bool enabled) {
 }
 
 void VideoDecoder::init_audio(const std::string& device_name) {
+    this->current_audio_device_ = device_name;
     if (this->pcm_handle_) {
         snd_pcm_close(this->pcm_handle_);
         this->pcm_handle_ = nullptr;
@@ -477,6 +478,7 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
         snd_pcm_sframes_t written = snd_pcm_writei(this->pcm_handle_, block.data(), frames_to_write);
         
         if (written > 0) {
+            this->alsa_error_count_ = 0;
             static int total_written = 0;
             total_written += written;
             if (total_written > 48000 * 5) { // every 5 seconds of audio
@@ -499,14 +501,30 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
             break;
         } else {
             if (written < 0) {
-                std::cerr << "ALSA: Write error: " << snd_strerror(written) << " (" << written << "). Recovering...\n";
+                // Log rate-limiting
+                auto now = std::chrono::steady_clock::now();
+                if (std::chrono::duration_cast<std::chrono::seconds>(now - this->last_alsa_error_log_).count() >= 5) {
+                    std::cerr << "ALSA: Write error: " << snd_strerror(written) << " (" << written << "). Recovering (Count: " << alsa_error_count_ << ")...\n";
+                    this->last_alsa_error_log_ = now;
+                }
+                
                 snd_pcm_recover(this->pcm_handle_, written, 0);
+                this->alsa_error_count_++;
+                
+                // Aggressive recovery: if EIO/errors persist, re-init the whole device
+                if (this->alsa_error_count_ > 100) {
+                    std::cerr << "ALSA: Persistent errors detected. Re-initializing audio device '" << this->current_audio_device_ << "'\n";
+                    this->init_audio(this->current_audio_device_);
+                    this->alsa_error_count_ = 0;
+                }
+            } else {
+                this->alsa_error_count_ = 0; // Reset on successful write (though written > 0 handles this above)
             }
-            // Don't clear spillover, just try again next time if it wasn't a fatal error
-            if (written != -EIO && written != -ENODEV) {
-                 break;
+            
+            // Don't clear spillover on minor errors, just break and retry next frame
+            if (written == -EIO || written == -ENODEV) {
+                 this->audio_spillover_.clear();
             }
-            this->audio_spillover_.clear();
             break;
         }
     }

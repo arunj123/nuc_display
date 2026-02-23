@@ -108,6 +108,11 @@ private:
     int get_buffer_retry_count_ = 0;
     int decoding_failure_count_ = 0;
     int packets_sent_without_frame_ = 0;
+    
+    // ALSA Resilience
+    int alsa_error_count_ = 0;
+    std::chrono::steady_clock::time_point last_alsa_error_log_ = std::chrono::steady_clock::now();
+    std::string current_audio_device_;
 };
 
 } // namespace nuc_display::modules
