@@ -105,6 +105,14 @@ void VideoDecoder::cleanup_codec() {
     this->packets_sent_without_frame_ = 0;
     this->eof_reached_ = false;
     this->audio_spillover_.clear();
+
+    // Properly drain and reset ALSA to prevent EIO errors on next video
+    if (this->pcm_handle_) {
+        // Drain current buffer
+        snd_pcm_drain(this->pcm_handle_);
+        // Reset to prepared state for next stream
+        snd_pcm_prepare(this->pcm_handle_);
+    }
 }
 
 void VideoDecoder::load_playlist(const std::vector<std::string>& files) {
