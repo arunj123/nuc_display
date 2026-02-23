@@ -253,6 +253,9 @@ std::expected<void, DisplayError> DisplayManager::init_egl() {
 
     eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_);
 
+    // Disable EGL internal VSync, let DRM Page Flipping handle VSync to avoid double-blocking starvation
+    eglSwapInterval(egl_display_, 0);
+
     return {};
 }
 

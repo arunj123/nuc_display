@@ -218,7 +218,6 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
 
     double local_time = time_sec - last_switch_time_;
     size_t active_chart_idx = static_cast<size_t>(local_time / display_duration_per_chart) % data.charts.size();
-    size_t prev_chart_idx = (active_chart_idx + data.charts.size() - 1) % data.charts.size();
     
     double chart_local_time = std::fmod(local_time, display_duration_per_chart);
     
@@ -239,11 +238,12 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         morph_ease = 1.0f; 
     }
 
+    size_t prev_chart_idx = (active_chart_idx + data.charts.size() - 1) % data.charts.size();
     const auto& active_chart = data.charts[active_chart_idx];
     const auto& prev_chart = data.charts[prev_chart_idx];
 
-    // Pull base_x left to stop clipping with massive fonts
-    float base_x = 0.40f; 
+    // Pull base_x to the left to prevent the text from crossing the right edge of the screen
+    float base_x = 0.44f; 
     float current_y = 0.15f + y_offset;
 
     // --- Stock Icon / Logo ---
@@ -256,24 +256,27 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         if (icon_textures_.count(data.symbol)) {
             tex_id = icon_textures_[data.symbol];
             has_icon = (tex_id > 0);
-        } else if (!icon_attempted_[data.symbol]) {
-            icon_attempted_[data.symbol] = true;
+        } else {
+            // Attempt to load the file (which might be downloading asynchronously by fetch_stock)
             std::string path = "assets/stocks/" + data.symbol + ".png";
-            if (!std::filesystem::exists(path)) path = "assets/stocks/" + data.symbol + ".jpg";
             
-            // Auto-fetch logo logic (spawns separate script/curl so we don't block render)
-            if (!std::filesystem::exists(path)) {
-                // Clearbit logo fallback based on lowercase ticker (works well for big tech like AAPL, MSFT, TSLA)
-                std::string cmd = "mkdir -p assets/stocks && curl -sL -m 2 'https://logo.clearbit.com/" + data.symbol + ".com' -o " + path + " &";
-                system(cmd.c_str());
-            }
-
-            if (std::filesystem::exists(path)) {
-                ImageLoader loader;
-                if (loader.load(path)) {
-                    tex_id = renderer.create_texture(loader.get_rgba_data().data(), loader.width(), loader.height(), loader.channels());
-                    icon_textures_[data.symbol] = tex_id;
-                    has_icon = (tex_id > 0);
+            if (std::filesystem::exists(path) && std::filesystem::file_size(path) > 0) {
+                // If it failed to decode previously, don't spam it every frame
+                if (!icon_attempted_[data.symbol]) {
+                    ImageLoader loader;
+                    if (loader.load(path)) {
+                        tex_id = renderer.create_texture(loader.get_rgba_data().data(), loader.width(), loader.height(), loader.channels());
+                        icon_textures_[data.symbol] = tex_id;
+                        has_icon = (tex_id > 0);
+                    } else {
+                        // Mark as attempted so we don't spam loader on an invalid/corrupt image file
+                        icon_attempted_[data.symbol] = true;
+                        
+                        // If it's extremely small, it's likely a 404 HTML body from Clearbit or empty. Delete it.
+                        if (std::filesystem::file_size(path) < 2048) {
+                            std::filesystem::remove(path);
+                        }
+                    }
                 }
             }
         }
