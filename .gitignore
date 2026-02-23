@@ -11,3 +11,4 @@ googletest-build/
 googletest-populate-prefix/
 _deps/
 tests/sample.mp4
+config.json

@@ -1,0 +1,53 @@
+{
+    "location": {
+        "address": "Hasenbuk, Nürnberg, Germany",
+        "lat": 49.42,
+        "lon": 11.08
+    },
+    "stocks": [
+        {
+            "currency_symbol": "€",
+            "name": "NVIDIA",
+            "symbol": "NVD.F"
+        },
+        {
+            "currency_symbol": "€",
+            "name": "Amazon",
+            "symbol": "AMZ.F"
+        },
+        {
+            "currency_symbol": "€",
+            "name": "Meta",
+            "symbol": "FB2A.F"
+        },
+        {
+            "currency_symbol": "€",
+            "name": "Alphabet",
+            "symbol": "ABEA.F"
+        },
+        {
+            "currency_symbol": "€",
+            "name": "Tesla",
+            "symbol": "TL0.F"
+        }
+    ],
+    "video": {
+        "audio_device": "default",
+        "audio_enabled": true,
+        "enabled": true,
+        "h": 0.20,
+        "playlists": [
+            "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4",
+            "tests/samples/sintel_trailer.mp4",
+            "tests/samples/sample_audio.mp4",
+            "tests/sample_with_audio.mp4"
+        ],
+        "src_h": 1.0,
+        "src_w": 1.0,
+        "src_x": 0.0,
+        "src_y": 0.0,
+        "w": 0.25,
+        "x": 0.70,
+        "y": 0.03
+    }
+}

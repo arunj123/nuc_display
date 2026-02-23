@@ -26,6 +26,7 @@ std::string error_to_string(DisplayError err) {
         case DisplayError::EglConfigFailed: return "EglConfigFailed";
         case DisplayError::EglContextFailed: return "EglContextFailed";
         case DisplayError::EglSurfaceFailed: return "EglSurfaceFailed";
+        case DisplayError::DrmMasterFailed: return "DrmMasterFailed (Permission Denied or Contention)";
         default: return "Unknown Error";
     }
 }
@@ -123,10 +124,10 @@ std::expected<void, DisplayError> DisplayManager::init_drm() {
     std::cout << "Found Display! " << mode_.hdisplay << "x" << mode_.vdisplay << std::endl;
 
     if (drmSetMaster(drm_fd_) != 0) {
-        std::cout << "  - Warning: Failed to set DRM master: " << std::strerror(errno) << " (ignoring for now)" << std::endl;
-    } else {
-        std::cout << "  - Successfully acquired DRM master." << std::endl;
-    }
+        std::cerr << "  - Fatal: Failed to set DRM master: " << std::strerror(errno) << "\n";
+        return std::unexpected(DisplayError::DrmMasterFailed);
+    } 
+    std::cout << "  - Successfully acquired DRM master." << std::endl;
 
     drm_encoder_ = drmModeGetEncoder(drm_fd_, drm_connector_->encoders[0]);
     if (!drm_encoder_) return std::unexpected(DisplayError::DrmEncoderFailed);

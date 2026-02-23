@@ -26,7 +26,8 @@ enum class DisplayError {
     EglInitializeFailed,
     EglConfigFailed,
     EglContextFailed,
-    EglSurfaceFailed
+    EglSurfaceFailed,
+    DrmMasterFailed
 };
 
 std::string error_to_string(DisplayError err);

@@ -9,6 +9,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <va/va.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/hwcontext_drm.h>
@@ -21,6 +22,8 @@ extern "C" {
 #include <alsa/asoundlib.h>
 }
 
+#include <deque>
+#include <mutex>
 #include "modules/container_reader.hpp"
 #include "core/renderer.hpp"
 
@@ -63,12 +66,23 @@ private:
     AVCodec* codec_ = nullptr;
     AVBufferRef* hw_device_ctx_ = nullptr;
     
+    // Buffering State
+    std::deque<AVPacket*> packet_queue_;
+    std::deque<AVFrame*> video_frame_queue_;
+    std::deque<AVFrame*> audio_frame_queue_;
+    const size_t max_packets_ = 100;
+    const size_t max_video_frames_ = 4; // Reduced from 8 to prevent hardware surface exhaustion
+    const size_t max_audio_frames_ = 20;
+    bool eof_reached_ = false;
+    
     // Audio State
     bool audio_enabled_ = false;
     int audio_stream_index_ = -1;
     snd_pcm_t* pcm_handle_ = nullptr;
     AVCodecContext* audio_codec_ctx_ = nullptr;
     AVFrame* audio_frame_ = nullptr;
+    SwrContext* swr_ctx_ = nullptr;
+    std::vector<uint8_t> audio_spillover_;
     
     AVFrame* hw_frame_ = nullptr;
     AVFrame* drm_frame_ = nullptr;
@@ -85,6 +99,15 @@ private:
     
     VADisplay va_display_ = nullptr;
     double last_frame_time_ = -1.0;
+    double video_start_time_ = -1.0;
+    AVRational stream_timebase_ = {1, 1};
+    int frames_rendered_ = 0;
+    
+    uint32_t negotiated_rate_ = 48000;
+    std::mutex queue_mutex_;
+    int get_buffer_retry_count_ = 0;
+    int decoding_failure_count_ = 0;
+    int packets_sent_without_frame_ = 0;
 };
 
 } // namespace nuc_display::modules

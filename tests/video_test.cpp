@@ -23,7 +23,9 @@ static int setup_vaapi(VideoDecoder& decoder) {
 TEST(VideoDecoderTest, LoadAndProcessVideoOnly) {
     VideoDecoder decoder;
     int drm_fd = setup_vaapi(decoder);
-    if (drm_fd < 0) GTEST_SKIP() << "VA-API or DRM not available";
+    if (drm_fd < 0) {
+        std::cout << "[ WARNING  ] VA-API hardware not found, attempting software fallback.\n";
+    }
 
     auto result = decoder.load("sample_no_audio.mp4");
     if (!result.has_value()) {
@@ -41,7 +43,9 @@ TEST(VideoDecoderTest, LoadAndProcessVideoOnly) {
 TEST(VideoDecoderTest, LoadAndProcessVideoWithAudio) {
     VideoDecoder decoder;
     int drm_fd = setup_vaapi(decoder);
-    if (drm_fd < 0) GTEST_SKIP() << "VA-API or DRM not available";
+    if (drm_fd < 0) {
+        std::cout << "[ WARNING  ] VA-API hardware not found, attempting software fallback.\n";
+    }
 
     decoder.set_audio_enabled(true);
     // Don't actually init ALSA in CI — just verify the decoder handles
@@ -62,7 +66,9 @@ TEST(VideoDecoderTest, LoadAndProcessVideoWithAudio) {
 TEST(VideoDecoderTest, PlaylistLoadAndCycle) {
     VideoDecoder decoder;
     int drm_fd = setup_vaapi(decoder);
-    if (drm_fd < 0) GTEST_SKIP() << "VA-API or DRM not available";
+    if (drm_fd < 0) {
+        std::cout << "[ WARNING  ] VA-API hardware not found, attempting software fallback.\n";
+    }
 
     // Load a playlist with two videos
     std::vector<std::string> playlist = {"sample_no_audio.mp4", "sample_with_audio.mp4"};

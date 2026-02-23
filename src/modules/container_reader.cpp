@@ -64,6 +64,13 @@ AVCodecParameters* ContainerReader::get_codec_params(int stream_index) const {
     return this->format_ctx_->streams[stream_index]->codecpar;
 }
 
+AVRational ContainerReader::get_stream_timebase(int stream_index) const {
+    if (!this->format_ctx_ || stream_index < 0 || stream_index >= static_cast<int>(this->format_ctx_->nb_streams)) {
+        return AVRational{0, 1};
+    }
+    return this->format_ctx_->streams[stream_index]->time_base;
+}
+
 std::expected<AVPacket*, MediaError> ContainerReader::read_packet() {
     if (!this->format_ctx_ || !this->packet_) return std::unexpected(MediaError::InternalError);
     av_packet_unref(this->packet_);

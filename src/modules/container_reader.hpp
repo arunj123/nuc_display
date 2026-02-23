@@ -22,6 +22,7 @@ public:
     int find_video_stream() const;
     int find_audio_stream() const;
     AVCodecParameters* get_codec_params(int stream_index) const;
+    AVRational get_stream_timebase(int stream_index) const;
     std::expected<AVPacket*, MediaError> read_packet();
 
     void rewind();

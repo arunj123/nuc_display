@@ -83,7 +83,6 @@ int main() {
     // Weather Module
     auto weather_module = std::make_unique<modules::WeatherModule>();
     std::optional<modules::WeatherData> weather_data;
-    bool screenshot_taken = false;
     auto screenshot_module = std::make_unique<modules::ScreenshotModule>();
     
     // Stock Module
@@ -105,7 +104,7 @@ int main() {
     // Audio Playback
     video_decoder->set_audio_enabled(app_config.video.audio_enabled);
     if (app_config.video.audio_enabled) {
-        video_decoder->init_audio("default");
+        video_decoder->init_audio(app_config.video.audio_device);
     }
     
     if (app_config.video.enabled) {
@@ -138,10 +137,16 @@ int main() {
     auto last_weather_update = std::chrono::steady_clock::now();
     auto last_stock_update = std::chrono::steady_clock::now();
     auto last_news_update = std::chrono::steady_clock::now();
+    int page_flip_failure_count = 0;
     auto program_start_time = std::chrono::steady_clock::now();
 
+    bool weather_online = true;
+    bool stock_online = true;
+    bool news_online = true;
 
-    std::cout << "--- Starting main loop ---\n";
+    std::future<std::expected<void, modules::MediaError>> video_process_task;
+
+    std::cout << "--- Starting main loop ---" << std::endl;
 
     while (g_running) {
         // --- CHECK WEATHER UPDATES (Every 10 mins) ---
@@ -157,7 +162,11 @@ int main() {
             auto result = weather_task.get();
             if (result) {
                 weather_data = result.value();
+                weather_online = true;
                 std::cout << "[Weather] Updated: " << weather_data->temperature << "°C, " << weather_data->description << "\n";
+            } else {
+                weather_online = false;
+                std::cerr << "[Weather] Update failed (Network Error)\n";
             }
         }
 
@@ -170,8 +179,14 @@ int main() {
         }
 
         if (stock_task.valid() && stock_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            stock_task.get();
-            std::cout << "[Stock] Data Updated.\n";
+            try {
+                stock_task.get();
+                stock_online = true;
+                std::cout << "[Stock] Data Updated.\n";
+            } catch (...) {
+                stock_online = false;
+                std::cerr << "[Stock] Update failed\n";
+            }
         }
 
         // --- CHECK NEWS UPDATES (Every 15 mins) ---
@@ -182,7 +197,12 @@ int main() {
             last_news_update = now;
         }
         if (news_task.valid() && news_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            news_task.get();
+            try {
+                news_task.get();
+                news_online = true;
+            } catch (...) {
+                news_online = false;
+            }
         }
 
         // --- RENDER DASHBOARD ---
@@ -226,12 +246,20 @@ int main() {
                 renderer->draw_text(glyphs.value(), 0.42f, 0.45f, 1.0f, 0.4f, 0.4f, 0.4f, 1.0f);
             }
             
-            // Retry weather faster when we have no data at all (every 30s instead of 10min)
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_weather_update).count() >= 30) {
+            // Retry weather faster when offline (every 10s)
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_weather_update).count() >= 10) {
                 weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon]() {
                     return weather_module->fetch_current_weather(lat, lon);
                 });
                 last_weather_update = now;
+            }
+        }
+
+        // Status Indicators for the User
+        if (!weather_online || !stock_online || !news_online) {
+            text_renderer->set_pixel_size(0, 18);
+            if (auto glyphs = text_renderer->shape_text("Network Trouble: Reconnecting...")) {
+                renderer->draw_text(glyphs.value(), 0.42f, 0.96f, 1.0f, 1.0f, 0.4f, 0.4f, 0.8f);
             }
         }
 
@@ -241,6 +269,21 @@ int main() {
 
         // Hardware Accelerated Video Playback (Zero-Copy)
         if (app_config.video.enabled) {
+            // Process decoding (fetches packets and decodes into buffer) in background
+            if (!video_process_task.valid() || video_process_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                if (video_process_task.valid()) {
+                    auto res = video_process_task.get();
+                    if (!res) {
+                        // Log error but continue
+                        // std::cerr << "[Video] Background process error: " << (int)res.error() << "\n";
+                    }
+                }
+                video_process_task = thread_pool.enqueue([&video_decoder, render_time_sec]() {
+                    return video_decoder->process(render_time_sec);
+                });
+            }
+
+            // Render the next available frame (always check if a frame is ready)
             bool playing = video_decoder->render(*renderer, display->egl_display(), 
                                                  app_config.video.src_x, app_config.video.src_y,
                                                  app_config.video.src_w, app_config.video.src_h,
@@ -249,6 +292,9 @@ int main() {
                                                  render_time_sec);
             if (!playing) {
                 // Loop to the next video in the playlist
+                if (video_process_task.valid()) {
+                    video_process_task.get(); // Wait for background process to finish before loading next
+                }
                 video_decoder->next_video();
             }
         }
@@ -268,12 +314,23 @@ int main() {
 
         // --- PAGE FLIP ---
         if (!display->page_flip()) {
+            page_flip_failure_count++;
+            if (page_flip_failure_count % 60 == 0) {
+                std::cerr << "[Core] Warning: DRM Page Flip failed " << page_flip_failure_count << " times consecutively. "
+                          << "This usually means DRM master was lost or a process conflict exists.\n";
+            }
+            if (page_flip_failure_count > 600) {
+                std::cerr << "[Core] Fatal: DRM Page Flip persistent failure. Exiting.\n";
+                g_running = false;
+            }
+            
             // Transient failure (e.g., after screenshot). Don't exit — just skip this frame.
             // Still process DRM events in case a flip was already pending.
             display->process_drm_events(16);
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
             continue;
         }
+        page_flip_failure_count = 0; // Reset on success
 
         // --- PROCESS KMS EVENTS (VSYNC) ---
         display->process_drm_events(100); 

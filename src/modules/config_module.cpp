@@ -84,17 +84,17 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     j["video"] = {
         {"enabled", config.video.enabled},
         {"audio_enabled", config.video.audio_enabled},
+        {"audio_device", config.video.audio_device},
         {"playlists", config.video.playlists},
         {"x", config.video.x},
         {"y", config.video.y},
         {"w", config.video.w},
-        {"h", config.video.h}
+        {"h", config.video.h},
+        {"src_x", config.video.src_x},
+        {"src_y", config.video.src_y},
+        {"src_w", config.video.src_w},
+        {"src_h", config.video.src_h}
     };
-    j["video"]["src_x"] = config.video.src_x;
-    j["video"]["src_y"] = config.video.src_y;
-    j["video"]["src_w"] = config.video.src_w;
-    j["video"]["src_h"] = config.video.src_h;
-
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -140,6 +140,7 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
         // Default Video Config
         config.video.enabled = true;
         config.video.audio_enabled = false;
+        config.video.audio_device = "default";
         config.video.playlists = {"tests/sample.mp4"};
         config.video.x = 0.70f;
         config.video.y = 0.03f;
@@ -191,6 +192,7 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 const auto& video_json = j["video"];
                 config.video.enabled = video_json.value("enabled", true);
                 config.video.audio_enabled = video_json.value("audio_enabled", false);
+                config.video.audio_device = video_json.value("audio_device", "default");
                 
                 if (video_json.contains("playlists") && video_json["playlists"].is_array()) {
                     for (const auto& item : video_json["playlists"]) {
