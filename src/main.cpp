@@ -21,6 +21,7 @@
 #include "modules/news_module.hpp"
 #include "modules/video_decoder.hpp"
 #include "modules/container_reader.hpp"
+#include "modules/performance_monitor.hpp"
 
 using namespace nuc_display;
 
@@ -134,9 +135,13 @@ int main() {
         news_module->update_headlines();
     });
 
+    // Performance Monitor
+    auto perf_monitor = std::make_unique<modules::PerformanceMonitor>();
+
     auto last_weather_update = std::chrono::steady_clock::now();
     auto last_stock_update = std::chrono::steady_clock::now();
     auto last_news_update = std::chrono::steady_clock::now();
+    auto last_perf_update = std::chrono::steady_clock::now();
     int page_flip_failure_count = 0;
     auto program_start_time = std::chrono::steady_clock::now();
 
@@ -203,6 +208,13 @@ int main() {
             } catch (...) {
                 news_online = false;
             }
+        }
+
+        // --- CHECK PERFORMANCE LOG (Every 30s) ---
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - last_perf_update).count() >= 30) {
+            perf_monitor->update();
+            perf_monitor->log();
+            last_perf_update = now;
         }
 
         // --- RENDER DASHBOARD ---

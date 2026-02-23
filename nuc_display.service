@@ -1,0 +1,25 @@
+[Unit]
+Description=NUC Display Dashboard
+After=network.target graphics.target alsa-restore.service
+
+[Service]
+Type=simple
+User=arun
+WorkingDirectory=/home/arun/projects/nuc_display
+ExecStart=/home/arun/projects/nuc_display/build/nuc_display
+Restart=always
+RestartSec=5
+
+# Grant access to hardware even in headless mode
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=GDK_BACKEND=drm
+Environment=EGL_PLATFORM=gbm
+# ALSA configuration
+Environment=ALSA_CARD=0
+
+# Security and Sandbox (Optional but good practice)
+# We need to keep some privileges for DRM/Render access
+SupplementaryGroups=video render audio plugdev
+
+[Install]
+WantedBy=multi-user.target
