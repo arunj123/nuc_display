@@ -45,14 +45,24 @@ int main() {
     std::cout << "Starting NUC Display Engine (C++23 Modernized)...\n";
 
     // 1. Initialize Display Manager
+    bool headless_mode = false;
     auto dm_result = core::DisplayManager::create();
     if (!dm_result) {
-        std::cerr << "[Core] Failed to initialize Display Manager: " 
-                  << core::error_to_string(dm_result.error()) << "\n";
-        return 1;
+        if (dm_result.error() == core::DisplayError::DrmConnectorFailed) {
+            std::cerr << "[Core] No display connected. Entering Headless Mode (Logic Only).\n";
+            headless_mode = true;
+        } else {
+            std::cerr << "[Core] Failed to initialize Display Manager: " 
+                      << core::error_to_string(dm_result.error()) << "\n";
+            return 1;
+        }
     }
-    auto display = std::move(dm_result.value());
-    std::cout << "[Core] Display Engine Running at " << display->width() << "x" << display->height() << "\n";
+    
+    std::unique_ptr<core::DisplayManager> display;
+    if (!headless_mode) {
+        display = std::move(dm_result.value());
+        std::cout << "[Core] Display Engine Running at " << display->width() << "x" << display->height() << "\n";
+    }
 
     // 1.5 Load Configuration
     auto config_module = std::make_unique<modules::ConfigModule>();
@@ -69,12 +79,14 @@ int main() {
 
     // 3. Initialize Modular Components
     auto renderer = std::make_unique<core::Renderer>();
-    renderer->init(display->width(), display->height());
-    
-    // Correction for flipped/rotated display as reported by user
-    // We can adjust these values if needed (0, 90, 180, 270)
-    renderer->set_rotation(0); 
-    renderer->set_flip(false, false); 
+    if (!headless_mode) {
+        renderer->init(display->width(), display->height());
+        
+        // Correction for flipped/rotated display as reported by user
+        // We can adjust these values if needed (0, 90, 180, 270)
+        renderer->set_rotation(0); 
+        renderer->set_flip(false, false); 
+    }
     
     // Text Rendering
     auto text_renderer = std::make_unique<modules::TextRenderer>();
@@ -105,7 +117,9 @@ int main() {
         if (!v_config.enabled) continue;
         
         auto decoder = std::make_unique<modules::VideoDecoder>();
-        decoder->init_vaapi(display->drm_fd());
+        if (display) {
+            decoder->init_vaapi(display->drm_fd());
+        }
         decoder->set_audio_enabled(v_config.audio_enabled);
         if (v_config.audio_enabled) {
             decoder->init_audio(v_config.audio_device);
@@ -162,6 +176,19 @@ int main() {
     std::cout << "--- Starting main loop ---" << std::endl;
 
     while (g_running) {
+        // --- POLL INPUT EVENTS ---
+        while (auto event = input_module->pop_event()) {
+            if (event->code == 35 && event->value == 1) { // KEY_H is 35
+                std::cout << "[Core] 'h' key detected. Unloading all video playlists.\n";
+                for (auto& decoder : video_decoders) {
+                    decoder->unload();
+                }
+            }
+        }
+        
+        auto now_p = std::chrono::steady_clock::now();
+        double render_time_sec = std::chrono::duration<double>(now_p - program_start_time).count();
+
         // --- CHECK WEATHER UPDATES (Every 10 mins) ---
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::minutes>(now - last_weather_update).count() >= 10) {
@@ -226,7 +253,7 @@ int main() {
         }
 
         // --- RENDER DASHBOARD ---
-        double render_time_sec = std::chrono::duration<double>(now - program_start_time).count();
+        // (render_time_sec is calculated at loop start)
         
         if (weather_data) {
             weather_module->render(*renderer, *text_renderer, weather_data.value(), render_time_sec);
@@ -305,15 +332,17 @@ int main() {
                 });
             }
 
-            bool playing = decoder->render(*renderer, display->egl_display(), 
-                                           v_config.src_x, v_config.src_y,
-                                           v_config.src_w, v_config.src_h,
-                                           v_config.x, v_config.y, 
-                                           v_config.w, v_config.h, 
-                                           render_time_sec);
-            if (!playing) {
-                if (task.valid()) task.get();
-                decoder->next_video();
+            if (!headless_mode) {
+                bool playing = decoder->render(*renderer, display->egl_display(), 
+                                               v_config.src_x, v_config.src_y,
+                                               v_config.src_w, v_config.src_h,
+                                               v_config.x, v_config.y, 
+                                               v_config.w, v_config.h, 
+                                               render_time_sec);
+                if (!playing) {
+                    if (task.valid()) task.get();
+                    decoder->next_video();
+                }
             }
         }
         // ALSA is now processed iteratively inside video_decoder->render() via packet interleaving
@@ -328,30 +357,35 @@ int main() {
         }
 
         // --- SWAP BUFFERS ---
-        display->swap_buffers();
+        if (!headless_mode) {
+            display->swap_buffers();
 
-        // --- PAGE FLIP ---
-        if (!display->page_flip()) {
-            page_flip_failure_count++;
-            if (page_flip_failure_count % 60 == 0) {
-                std::cerr << "[Core] Warning: DRM Page Flip failed " << page_flip_failure_count << " times consecutively. "
-                          << "This usually means DRM master was lost or a process conflict exists.\n";
+            // --- PAGE FLIP ---
+            if (!display->page_flip()) {
+                page_flip_failure_count++;
+                if (page_flip_failure_count % 60 == 0) {
+                    std::cerr << "[Core] Warning: DRM Page Flip failed " << page_flip_failure_count << " times consecutively. "
+                              << "This usually means DRM master was lost or a process conflict exists.\n";
+                }
+                if (page_flip_failure_count > 600) {
+                    std::cerr << "[Core] Fatal: DRM Page Flip persistent failure. Exiting.\n";
+                    g_running = false;
+                }
+                
+                // Transient failure (e.g., after screenshot). Don't exit — just skip this frame.
+                // Still process DRM events in case a flip was already pending.
+                display->process_drm_events(16);
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                continue;
             }
-            if (page_flip_failure_count > 600) {
-                std::cerr << "[Core] Fatal: DRM Page Flip persistent failure. Exiting.\n";
-                g_running = false;
-            }
-            
-            // Transient failure (e.g., after screenshot). Don't exit — just skip this frame.
-            // Still process DRM events in case a flip was already pending.
-            display->process_drm_events(16);
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-            continue;
+            page_flip_failure_count = 0; // Reset on success
+
+            // --- PROCESS KMS EVENTS (VSYNC) ---
+            display->process_drm_events(100); 
+        } else {
+            // Headless sleep to prevent pinning CPU
+            std::this_thread::sleep_for(std::chrono::milliseconds(33)); // ~30fps heartbeat
         }
-        page_flip_failure_count = 0; // Reset on success
-
-        // --- PROCESS KMS EVENTS (VSYNC) ---
-        display->process_drm_events(100); 
     }
 
     std::cout << "\n[Core] Shutting down gracefully...\n";

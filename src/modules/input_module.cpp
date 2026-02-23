@@ -5,6 +5,8 @@
 #include <dirent.h>
 #include <cstring>
 #include <poll.h>
+#include <optional>
+#include <deque>
 
 namespace nuc_display::modules {
 
@@ -67,6 +69,14 @@ void InputModule::stop() {
     }
 }
 
+std::optional<KeyEvent> InputModule::pop_event() {
+    std::lock_guard<std::mutex> lock(this->event_mutex_);
+    if (this->event_queue_.empty()) return std::nullopt;
+    KeyEvent ev = this->event_queue_.front();
+    this->event_queue_.pop_front();
+    return ev;
+}
+
 void InputModule::polling_thread() {
     std::vector<struct pollfd> pollfds;
     for (int fd : this->fds_) {
@@ -81,6 +91,11 @@ void InputModule::polling_thread() {
                     struct input_event ev;
                     while (read(pfd.fd, &ev, sizeof(ev)) > 0) {
                         if (ev.type == EV_KEY) {
+                            {
+                                std::lock_guard<std::mutex> lock(this->event_mutex_);
+                                this->event_queue_.push_back({ev.code, ev.value});
+                            }
+                            
                             std::string state = (ev.value == 1) ? "DOWN" : (ev.value == 0 ? "UP" : "REPEAT");
                             std::cout << "[Input] Key Press: Code " << ev.code << " [" << state << "]\n";
                         }
