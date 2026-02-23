@@ -25,7 +25,32 @@ make -j$(nproc)
 cd ..
 
 echo "--- 4. Installing Systemd Service ---"
-sudo cp nuc_display.service /etc/systemd/system/
+# Discover system values
+# Use SUDO_USER if running under sudo, otherwise current user
+USER_VAL=${SUDO_USER:-$(whoami)}
+WORKDIR_VAL=$(pwd)
+# If we are in the scripts directory, go up one level
+if [[ $WORKDIR_VAL == */scripts ]]; then
+    WORKDIR_VAL=$(dirname "$WORKDIR_VAL")
+fi
+UID_VAL=$(id -u $USER_VAL)
+# Try to find the first ALSA card
+ALSA_CARD_VAL=$(aplay -l | grep "^card" | head -n 1 | cut -d" " -f2 | cut -d":" -f1 || echo "0")
+
+echo "Detected Configuration:"
+echo "  User: $USER_VAL"
+echo "  WorkDir: $WORKDIR_VAL"
+echo "  UID: $UID_VAL"
+echo "  ALSA Card: $ALSA_CARD_VAL"
+
+# Generate resolved service file
+sed -e "s|@USER@|$USER_VAL|g" \
+    -e "s|@WORKDIR@|$WORKDIR_VAL|g" \
+    -e "s|@UID@|$UID_VAL|g" \
+    -e "s|@ALSA_CARD@|$ALSA_CARD_VAL|g" \
+    nuc_display.service > nuc_display.service.resolved
+
+sudo cp nuc_display.service.resolved /etc/systemd/system/nuc_display.service
 sudo systemctl daemon-reload
 sudo systemctl enable nuc_display
 
