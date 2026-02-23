@@ -48,6 +48,11 @@ public:
     void rewind_stream();
     void load_playlist(const std::vector<std::string>& files);
     void next_video();
+    void prev_video();
+    void unload();
+    bool is_loaded() const;
+    void skip_forward(double seconds = 10.0);
+    void skip_backward(double seconds = 10.0);
     
     void set_audio_enabled(bool enabled);
     void init_audio(const std::string& device_name = "default");
@@ -113,6 +118,9 @@ private:
     int alsa_error_count_ = 0;
     std::chrono::steady_clock::time_point last_alsa_error_log_ = std::chrono::steady_clock::now();
     std::string current_audio_device_;
+    bool is_seeking_ = false;
+    double current_pos_sec_ = 0.0;
+    double seek_offset_sec_ = 0.0;
 };
 
 } // namespace nuc_display::modules

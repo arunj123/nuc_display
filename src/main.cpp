@@ -22,6 +22,7 @@
 #include "modules/video_decoder.hpp"
 #include "modules/container_reader.hpp"
 #include "modules/input_module.hpp"
+#include "modules/config_validator.hpp"
 #include "modules/performance_monitor.hpp"
 
 using namespace nuc_display;
@@ -73,6 +74,15 @@ int main() {
     }
     auto app_config = app_config_res.value();
 
+    // 1.6 Validate Configuration
+    auto config_errors = modules::ConfigValidator::validate(app_config);
+    if (!config_errors.empty()) {
+        std::cerr << "[Config] " << config_errors.size() << " validation error(s):\n";
+        for (const auto& err : config_errors) {
+            std::cerr << "  - " << err << "\n";
+        }
+    }
+
     // 2. Initialize Thread Pool
     utils::ThreadPool thread_pool(4);
     std::cout << "[Core] Initialized Thread Pool.\n";
@@ -113,6 +123,7 @@ int main() {
 
     // Video Decoding (Hardware Accelerated) - Multi-instance support
     std::vector<std::unique_ptr<modules::VideoDecoder>> video_decoders;
+    std::vector<bool> video_started; // Track if key-triggered videos have been started
     for (const auto& v_config : app_config.videos) {
         if (!v_config.enabled) continue;
         
@@ -126,10 +137,19 @@ int main() {
         }
         
         if (!v_config.playlists.empty()) {
-            decoder->load_playlist(v_config.playlists);
+            // Only auto-start if start_trigger is "auto" (key == 0)
+            if (v_config.start_trigger_key == 0) {
+                decoder->load_playlist(v_config.playlists);
+                video_started.push_back(true);
+            } else {
+                std::cout << "[Core] Video region waiting for key '" 
+                          << v_config.start_trigger_name << "' to start.\n";
+                video_started.push_back(false);
+            }
             video_decoders.push_back(std::move(decoder));
         } else {
             std::cerr << "[Core] No videos defined for a configured video region.\n";
+            video_started.push_back(false);
         }
     }
 
@@ -172,16 +192,51 @@ int main() {
 
     // Multi-video background tasks
     std::vector<std::future<std::expected<void, modules::MediaError>>> video_process_tasks(video_decoders.size());
+    bool videos_hidden = false;
+    auto last_config_error_log = std::chrono::steady_clock::now();
 
     std::cout << "--- Starting main loop ---" << std::endl;
 
     while (g_running) {
         // --- POLL INPUT EVENTS ---
         while (auto event = input_module->pop_event()) {
-            if (event->code == 35 && event->value == 1) { // KEY_H is 35
-                std::cout << "[Core] 'h' key detected. Unloading all video playlists.\n";
-                for (auto& decoder : video_decoders) {
-                    decoder->unload();
+            if (event->value != 1) continue; // Only handle KEY_DOWN
+            uint16_t code = event->code;
+
+            // Global: Hide/Show toggle
+            if (app_config.global_keys.hide_videos && code == *app_config.global_keys.hide_videos) {
+                videos_hidden = !videos_hidden;
+                std::cout << "[Core] Videos " << (videos_hidden ? "HIDDEN" : "SHOWN") << "\n";
+            }
+
+            // Per-video key handling
+            for (size_t i = 0; i < video_decoders.size(); ++i) {
+                auto& decoder = video_decoders[i];
+                auto& v_config = app_config.videos[i];
+
+                // Start trigger
+                if (v_config.start_trigger_key > 0 && code == v_config.start_trigger_key && !video_started[i]) {
+                    std::cout << "[Core] Key trigger: Starting video " << i << "\n";
+                    decoder->load_playlist(v_config.playlists);
+                    video_started[i] = true;
+                }
+
+                // Navigation keys
+                if (v_config.keys.next && code == *v_config.keys.next) {
+                    std::cout << "[Core] Key: Next video for decoder " << i << "\n";
+                    decoder->next_video();
+                }
+                if (v_config.keys.prev && code == *v_config.keys.prev) {
+                    std::cout << "[Core] Key: Prev video for decoder " << i << "\n";
+                    decoder->prev_video();
+                }
+                if (v_config.keys.skip_forward && code == *v_config.keys.skip_forward) {
+                    std::cout << "[Core] Key: Skip forward for decoder " << i << "\n";
+                    decoder->skip_forward(2.0);
+                }
+                if (v_config.keys.skip_backward && code == *v_config.keys.skip_backward) {
+                    std::cout << "[Core] Key: Skip backward for decoder " << i << "\n";
+                    decoder->skip_backward(2.0);
                 }
             }
         }
@@ -300,6 +355,12 @@ int main() {
                 });
                 last_weather_update = now;
             }
+
+            // Periodically log config errors if running degraded
+            if (!config_errors.empty() && std::chrono::duration_cast<std::chrono::seconds>(now - last_config_error_log).count() >= 30) {
+                std::cerr << "[Config] Reminder: " << config_errors.size() << " validation error(s) present.\n";
+                last_config_error_log = now;
+            }
         }
 
         // Status Indicators for the User
@@ -327,12 +388,16 @@ int main() {
                         // std::cerr << "[Video " << i << "] Error: " << (int)res.error() << "\n";
                     }
                 }
-                task = thread_pool.enqueue([&decoder, render_time_sec]() {
-                    return decoder->process(render_time_sec);
-                });
+                
+                // Only process decoding if the video is started and not hidden
+                if (video_started[i] && !videos_hidden && decoder->is_loaded()) {
+                    task = thread_pool.enqueue([&decoder, render_time_sec]() {
+                        return decoder->process(render_time_sec);
+                    });
+                }
             }
 
-            if (!headless_mode) {
+            if (!headless_mode && !videos_hidden && video_started[i] && decoder->is_loaded()) {
                 bool playing = decoder->render(*renderer, display->egl_display(), 
                                                v_config.src_x, v_config.src_y,
                                                v_config.src_w, v_config.src_h,

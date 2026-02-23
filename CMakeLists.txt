@@ -78,6 +78,7 @@ set(SRC_FILES
     src/modules/container_reader.cpp
     src/modules/weather_module.cpp
     src/modules/config_module.cpp
+    src/modules/config_validator.cpp
     src/modules/stock_module.cpp
     src/modules/screenshot_module.cpp
     src/modules/news_module.cpp

@@ -129,6 +129,44 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
         return std::unexpected(StockError::ParseError);
     }
 
+    // --- Auto-Fetch accurate company logo via Yahoo assetProfile + Clearbit ---
+    // Only attempt if we don't already have a local logo file
+    std::string icon_path = "assets/stocks/" + config.symbol + ".png";
+    std::string alt_icon_path = "assets/stocks/" + config.symbol + ".jpg";
+    if (!std::filesystem::exists(icon_path) && !std::filesystem::exists(alt_icon_path)) {
+        std::string profile_readBuffer;
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &profile_readBuffer);
+        curl_easy_setopt(curl, CURLOPT_URL, ("https://query1.finance.yahoo.com/v10/finance/quoteSummary/" + config.symbol + "?modules=assetProfile").c_str());
+        
+        if (curl_easy_perform(curl) == CURLE_OK) {
+            try {
+                auto p_json = nlohmann::json::parse(profile_readBuffer);
+                if (p_json.contains("quoteSummary") && p_json["quoteSummary"]["result"].is_array() && !p_json["quoteSummary"]["result"].empty()) {
+                    auto profile = p_json["quoteSummary"]["result"][0]["assetProfile"];
+                    if (profile.contains("website") && profile["website"].is_string()) {
+                        std::string website = profile["website"];
+                        // Basic domain extraction
+                        size_t start = website.find("://");
+                        if (start != std::string::npos) website = website.substr(start + 3);
+                        size_t www = website.find("www.");
+                        if (www == 0) website = website.substr(4);
+                        size_t end = website.find("/");
+                        if (end != std::string::npos) website = website.substr(0, end);
+                        
+                        // Fire off async curl to download logo
+                        if (!website.empty()) {
+                            std::string cmd = "mkdir -p assets/stocks && curl -sL -m 3 'https://logo.clearbit.com/" + website + "' -o " + icon_path + " &";
+                            int sys_res = system(cmd.c_str());
+                            (void)sys_res;
+                        }
+                    }
+                }
+            } catch (...) {
+                // Ignore profile parse errors, logo is optional
+            }
+        }
+    }
+
     // Sequence queries
     // 1D
     if (auto c1 = fetch_single_range(curl, config.symbol, "1D", "1d", "5m")) data.charts.push_back(c1.value());
@@ -204,12 +242,12 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     const auto& active_chart = data.charts[active_chart_idx];
     const auto& prev_chart = data.charts[prev_chart_idx];
 
-    // We render on the right half (x around 0.42 to 0.95)
-    float base_x = 0.42f;
+    // Pull base_x left to stop clipping with massive fonts
+    float base_x = 0.40f; 
     float current_y = 0.15f + y_offset;
 
     // --- Stock Icon / Logo ---
-    float icon_size = 0.08f;
+    float icon_size = 0.08f; 
     bool has_icon = false;
     uint32_t tex_id = 0;
 
@@ -220,10 +258,16 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
             has_icon = (tex_id > 0);
         } else if (!icon_attempted_[data.symbol]) {
             icon_attempted_[data.symbol] = true;
-            // Try loading from assets/stocks/{symbol}.png
             std::string path = "assets/stocks/" + data.symbol + ".png";
             if (!std::filesystem::exists(path)) path = "assets/stocks/" + data.symbol + ".jpg";
             
+            // Auto-fetch logo logic (spawns separate script/curl so we don't block render)
+            if (!std::filesystem::exists(path)) {
+                // Clearbit logo fallback based on lowercase ticker (works well for big tech like AAPL, MSFT, TSLA)
+                std::string cmd = "mkdir -p assets/stocks && curl -sL -m 2 'https://logo.clearbit.com/" + data.symbol + ".com' -o " + path + " &";
+                system(cmd.c_str());
+            }
+
             if (std::filesystem::exists(path)) {
                 ImageLoader loader;
                 if (loader.load(path)) {
@@ -241,51 +285,57 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         base_x += icon_size + 0.02f; // Shift text to the right
     }
 
-    // 1. Draw Symbol Name & Ticker
-    text_renderer.set_pixel_size(0, 48);
-    std::stringstream name_ss;
-    name_ss << data.name << "  (" << data.symbol << ")";
-    if (auto glyphs = text_renderer.shape_text(name_ss.str())) {
-        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
+    // 1. Draw Symbol (Large & Bold)
+    text_renderer.set_pixel_size(0, 95); // Match time size from Weather
+    if (auto glyphs = text_renderer.shape_text(data.symbol)) {
+        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
+    }
+    
+    // Draw Name (Subtle Grey, strictly below symbol)
+    current_y += 0.06f;
+    text_renderer.set_pixel_size(0, 32);
+    if (auto glyphs = text_renderer.shape_text(data.name)) {
+        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
     }
 
-    current_y += 0.12f;
+    current_y += 0.14f;
 
-    // 2. Draw Price (Large)
+    // 2. Draw Price (Massive)
     std::stringstream price_ss;
     price_ss << std::fixed << std::setprecision(2) << data.currency_symbol << data.current_price;
     text_renderer.set_pixel_size(0, 160);
+    float price_w = 0.0f;
     if (auto glyphs = text_renderer.shape_text(price_ss.str())) {
+        for (const auto& g : glyphs.value()) price_w += g.advance / (float)renderer.width();
         renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
     }
-    current_y += 0.08f;
 
-    // 3. Draw Interpolated Change % (Green/Red) and Timeframe Label
+    // 3. Draw Interpolated Change % and Timeframe Label (Placed cleanly to the right of the price)
     float current_change = prev_chart.change_percent * (1.0f - morph_ease) + active_chart.change_percent * morph_ease;
     
     std::stringstream change_ss;
     change_ss << std::fixed << std::setprecision(2) << (current_change >= 0 ? "+" : "") << current_change << "%";
-    text_renderer.set_pixel_size(0, 56);
+    text_renderer.set_pixel_size(0, 64);
     
     float r = current_change >= 0 ? 0.2f : 1.0f;
     float g = current_change >= 0 ? 0.8f : 0.3f;
     float b = 0.3f; // nice red/green
     
+    float change_x = base_x + price_w + 0.04f;
     if (auto glyphs = text_renderer.shape_text(change_ss.str())) {
-        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, r, g, b, alpha);
+        renderer.draw_text(glyphs.value(), change_x, current_y - 0.04f, 1.0f, r, g, b, alpha);
     }
     
-    // Timeframe Label (e.g. "1D")
-    // Pulse animation for the label text as it switches
-    float label_alpha = alpha * (0.5f + 0.5f * (1.0f - std::abs(1.0f - 2.0f * morph_ease))); // simple fade transition
-    if (morph_ease == 1.0f) label_alpha = alpha; // keep solid after transition
+    // Timeframe Label under change %
+    float label_alpha = alpha * (0.5f + 0.5f * (1.0f - std::abs(1.0f - 2.0f * morph_ease))); 
+    if (morph_ease == 1.0f) label_alpha = alpha;
     
-    if (auto glyphs = text_renderer.shape_text(active_chart.label)) {
-        // Offset arbitrarily by 0.15 to place next to the percentage
-        renderer.draw_text(glyphs.value(), base_x + 0.15f, current_y, 1.0f, 0.5f, 0.5f, 0.5f, label_alpha);
+    text_renderer.set_pixel_size(0, 28);
+    if (auto glyphs = text_renderer.shape_text(active_chart.label + " Change")) {
+        renderer.draw_text(glyphs.value(), change_x, current_y + 0.01f, 1.0f, 0.5f, 0.5f, 0.5f, label_alpha);
     }
 
-    current_y += 0.15f;
+    current_y += 0.12f;
 
     // 4. Draw Interpolated Massive Sparkline and Scales
     if (active_chart.prices.size() > 2 && prev_chart.prices.size() == active_chart.prices.size()) {

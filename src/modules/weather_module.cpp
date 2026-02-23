@@ -198,7 +198,7 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     // =========================================================
     // ROW 3: Weather Icon           (y = 0.19 - 0.54)
     // =========================================================
-    float icon_h = 0.33f;
+    float icon_h = 0.40f; // Enlarged Material 3D Icon
     float icon_w = icon_h / aspect; // Enforces perfect square on 16:9 screen
     float icon_x = lx + (left_w - icon_w) / 2.0f; // Center horizontally
     
@@ -213,7 +213,8 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
         } catch(...) {}
     }
     
-    renderer.draw_animated_weather(data.weather_code, icon_x, 0.19f, icon_w, icon_h, time_sec, is_night);
+    renderer.draw_animated_weather(data.weather_code, icon_x, 0.17f, icon_w, icon_h, time_sec, is_night);
+
 
     // =========================================================
     // ROW 4: Description, Warnings, Tip  (y = 0.55 - 0.68)

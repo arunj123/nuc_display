@@ -105,6 +105,9 @@ void VideoDecoder::cleanup_codec() {
     this->packets_sent_without_frame_ = 0;
     this->eof_reached_ = false;
     this->audio_spillover_.clear();
+    this->is_seeking_ = false;
+    this->current_pos_sec_ = 0.0;
+    this->seek_offset_sec_ = 0.0;
 
     // Properly drain and reset ALSA to prevent EIO errors on next video
     if (this->pcm_handle_) {
@@ -137,6 +140,117 @@ void VideoDecoder::next_video() {
     // Call load() outside the lock, as load() calls cleanup_codec() which acquires queue_mutex_
     if (next_index >= 0) {
         this->load(this->playlist_[next_index]);
+    }
+}
+
+void VideoDecoder::unload() {
+    std::cout << "[VideoDecoder] Unloading all resources and clearing playlist.\n";
+    {
+        std::lock_guard<std::mutex> lock(this->queue_mutex_);
+        this->playlist_.clear();
+        this->playlist_index_ = 0;
+    }
+    this->cleanup_codec();
+}
+
+bool VideoDecoder::is_loaded() const {
+    return this->codec_ctx_ != nullptr;
+}
+
+void VideoDecoder::prev_video() {
+    if (this->playlist_.empty()) return;
+    
+    int prev_index = -1;
+    {
+        std::lock_guard<std::mutex> lock(this->queue_mutex_);
+        if (this->playlist_index_ == 0) {
+            this->playlist_index_ = this->playlist_.size() - 1;
+        } else {
+            this->playlist_index_--;
+        }
+        prev_index = this->playlist_index_;
+    }
+    
+    if (prev_index >= 0) {
+        this->load(this->playlist_[prev_index]);
+    }
+}
+
+void VideoDecoder::skip_forward(double seconds) {
+    if (!this->codec_ctx_ || !this->container_.format_ctx() || seconds <= 0) return;
+    
+    double target_sec = this->current_pos_sec_ + seconds;
+    double duration = this->container_.format_ctx()->duration / (double)AV_TIME_BASE;
+    if (duration > 0 && target_sec > duration) {
+        std::cout << "[VideoDecoder] Target " << target_sec << "s > Duration " << duration << "s. Clipping.\n";
+        target_sec = duration - 0.5;
+    }
+    
+    int64_t seek_target = this->container_.format_ctx()->start_time + static_cast<int64_t>(target_sec * AV_TIME_BASE);
+    
+    std::cout << "[VideoDecoder] Skipping forward " << seconds << "s (from " << this->current_pos_sec_ << "s to " << target_sec << "s)\n";
+    {
+        std::lock_guard<std::mutex> lock(this->queue_mutex_);
+        // Clear queues
+        while (!this->packet_queue_.empty()) { av_packet_free(&this->packet_queue_.front()); this->packet_queue_.pop_front(); }
+        while (!this->video_frame_queue_.empty()) { av_frame_free(&this->video_frame_queue_.front()); this->video_frame_queue_.pop_front(); }
+        while (!this->audio_frame_queue_.empty()) { av_frame_free(&this->audio_frame_queue_.front()); this->audio_frame_queue_.pop_front(); }
+        
+        this->eof_reached_ = false;
+        this->audio_spillover_.clear();
+        this->video_start_time_ = -1.0;
+        this->last_frame_time_ = -1.0;
+        this->frames_rendered_ = 0;
+        this->seek_offset_sec_ = target_sec;
+        this->current_pos_sec_ = target_sec; 
+        this->is_seeking_ = true;
+    }
+    
+    // For forward seek, using no flags can sometimes be better if we want to land near target.
+    // However, FFmpeg often needs BACKWARD to find a reliable start point.
+    av_seek_frame(this->container_.format_ctx(), -1, seek_target, AVSEEK_FLAG_BACKWARD);
+    avcodec_flush_buffers(this->codec_ctx_);
+    if (this->audio_codec_ctx_) {
+        avcodec_flush_buffers(this->audio_codec_ctx_);
+        if (this->pcm_handle_) {
+            snd_pcm_drop(this->pcm_handle_);
+            snd_pcm_prepare(this->pcm_handle_);
+        }
+    }
+}
+
+void VideoDecoder::skip_backward(double seconds) {
+    if (!this->codec_ctx_ || !this->container_.format_ctx()) return;
+    
+    double target_sec = std::max(0.0, this->current_pos_sec_ - seconds);
+    int64_t seek_target = this->container_.format_ctx()->start_time + static_cast<int64_t>(target_sec * AV_TIME_BASE);
+
+    std::cout << "[VideoDecoder] Skipping backward " << seconds << "s (from " << this->current_pos_sec_ << "s to " << target_sec << "s)\n";
+    {
+        std::lock_guard<std::mutex> lock(this->queue_mutex_);
+        // Clear queues
+        while (!this->packet_queue_.empty()) { av_packet_free(&this->packet_queue_.front()); this->packet_queue_.pop_front(); }
+        while (!this->video_frame_queue_.empty()) { av_frame_free(&this->video_frame_queue_.front()); this->video_frame_queue_.pop_front(); }
+        while (!this->audio_frame_queue_.empty()) { av_frame_free(&this->audio_frame_queue_.front()); this->audio_frame_queue_.pop_front(); }
+
+        this->eof_reached_ = false;
+        this->audio_spillover_.clear();
+        this->video_start_time_ = -1.0;
+        this->last_frame_time_ = -1.0;
+        this->frames_rendered_ = 0;
+        this->seek_offset_sec_ = target_sec;
+        this->current_pos_sec_ = target_sec;
+        this->is_seeking_ = true;
+    }
+
+    av_seek_frame(this->container_.format_ctx(), -1, seek_target, AVSEEK_FLAG_BACKWARD);
+    avcodec_flush_buffers(this->codec_ctx_);
+    if (this->audio_codec_ctx_) {
+        avcodec_flush_buffers(this->audio_codec_ctx_);
+        if (this->pcm_handle_) {
+            snd_pcm_drop(this->pcm_handle_);
+            snd_pcm_prepare(this->pcm_handle_);
+        }
     }
 }
 
@@ -305,6 +419,7 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
         {
             std::lock_guard<std::mutex> lock(this->queue_mutex_);
             this->packet_queue_.push_back(packet);
+            this->is_seeking_ = false; // Successfully read a packet after seek
         }
     }
     
@@ -466,8 +581,17 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
     }
 
     // 1d. Move as much as possible from audio spillover to ALSA hardware
-    // Note: Holding queue_mutex_ here might block render() if ALSA write blocks.
-    // However, snd_pcm_writei is called with NONBLOCK.
+    // Persistent ALSA recovery: if pcm_handle is null and audio is enabled, try to re-init
+    if (this->audio_enabled_ && !this->pcm_handle_ && !this->current_audio_device_.empty()) {
+        static auto last_retry = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - last_retry).count() >= 5) {
+            std::cout << "ALSA: Retrying to open device '" << this->current_audio_device_ << "'\n";
+            this->init_audio(this->current_audio_device_);
+            last_retry = now;
+        }
+    }
+
     while (true) {
         if (!this->pcm_handle_ || this->audio_spillover_.empty()) break;
         
@@ -509,31 +633,26 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
             break;
         } else {
             if (written < 0) {
-                // Log rate-limiting
+                // Log and try recover
                 auto now = std::chrono::steady_clock::now();
                 if (std::chrono::duration_cast<std::chrono::seconds>(now - this->last_alsa_error_log_).count() >= 5) {
                     std::cerr << "ALSA: Write error: " << snd_strerror(written) << " (" << written << "). Recovering (Count: " << alsa_error_count_ << ")...\n";
                     this->last_alsa_error_log_ = now;
                 }
                 
-                snd_pcm_recover(this->pcm_handle_, written, 0);
-                this->alsa_error_count_++;
-                
-                // Aggressive recovery: if EIO/errors persist, re-init the whole device
-                if (this->alsa_error_count_ > 100) {
-                    std::cerr << "ALSA: Persistent errors detected. Re-initializing audio device '" << this->current_audio_device_ << "'\n";
-                    this->init_audio(this->current_audio_device_);
-                    this->alsa_error_count_ = 0;
+                // Try ALSA's built-in recover first
+                int res = snd_pcm_recover(this->pcm_handle_, written, 0);
+                if (res < 0) {
+                    // Persistent failure - close for re-init
+                    if (++this->alsa_error_count_ > 10) {
+                        std::cerr << "ALSA: Persistent failure. Forcing device close/reopen.\n";
+                        snd_pcm_close(this->pcm_handle_);
+                        this->pcm_handle_ = nullptr;
+                        this->alsa_error_count_ = 0;
+                    }
                 }
-            } else {
-                this->alsa_error_count_ = 0; // Reset on successful write (though written > 0 handles this above)
+                break;
             }
-            
-            // Don't clear spillover on minor errors, just break and retry next frame
-            if (written == -EIO || written == -ENODEV) {
-                 this->audio_spillover_.clear();
-            }
-            break;
         }
     }
     
@@ -596,7 +715,8 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
         if (!this->codec_ctx_) return false; // Codec was cleaned up (e.g. by next_video on another thread)
         if (this->video_frame_queue_.empty()) {
             // Only signal "done" when EOF is reached AND all packets have been consumed AND all frames shown
-            if (this->eof_reached_ && this->packet_queue_.empty()) return false;
+            // AND we are not currently waiting for a seek to complete.
+            if (!this->is_seeking_ && this->eof_reached_ && this->packet_queue_.empty()) return false;
             return true; // Still have packets to decode or waiting for more
         }
         
@@ -622,6 +742,7 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
             this->video_frame_queue_.pop_front();
             this->last_frame_time_ = time_sec;
             this->frames_rendered_++;
+            this->current_pos_sec_ = this->seek_offset_sec_ + frame_pts; // Absolute position
         }
     }
     
@@ -688,7 +809,7 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
                     attribs.push_back(desc->layers[1].planes[0].pitch);
                 } else {
                     // Single-layer layout (planes in desc->layers[0])
-                    for (uint32_t p = 0; p < desc->layers[0].nb_planes && p < 4; ++p) {
+                    for (int p = 0; p < desc->layers[0].nb_planes && p < 4; ++p) {
                         EGLint fd_key = EGL_DMA_BUF_PLANE0_FD_EXT + (p * 3);
                         EGLint offset_key = EGL_DMA_BUF_PLANE0_OFFSET_EXT + (p * 3);
                         EGLint pitch_key = EGL_DMA_BUF_PLANE0_PITCH_EXT + (p * 3);

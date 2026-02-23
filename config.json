@@ -4,6 +4,9 @@
         "lat": 49.42,
         "lon": 11.08
     },
+    "global_keys": {
+        "hide_videos": "v"
+    },
     "stocks": [
         {
             "currency_symbol": "€",
@@ -36,6 +39,13 @@
             "audio_device": "default",
             "audio_enabled": true,
             "enabled": true,
+            "start_trigger": "auto",
+            "keys": {
+                "next": "right",
+                "prev": "left",
+                "skip_forward": "up",
+                "skip_backward": "down"
+            },
             "playlists": [
                 "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4",
                 "tests/samples/sample_audio.mp4"
@@ -52,6 +62,7 @@
         {
             "audio_enabled": false,
             "enabled": true,
+            "start_trigger": "p",
             "playlists": [
                 "tests/samples/sintel_trailer.mp4"
             ],

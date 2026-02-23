@@ -26,6 +26,8 @@ public:
     std::expected<AVPacket*, MediaError> read_packet();
 
     void rewind();
+    
+    AVFormatContext* format_ctx() const { return format_ctx_; }
 
 private:
     AVFormatContext* format_ctx_ = nullptr;

@@ -167,3 +167,70 @@ TEST_F(ConfigModuleTest, HandleMissingVideoNode) {
     EXPECT_TRUE(result->videos[0].enabled);
     EXPECT_EQ(result->videos[0].playlists[0], "tests/sample.mp4");
 }
+
+#include "modules/config_validator.hpp"
+
+TEST(ConfigValidatorTest, ValidConfigPasses) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.global_keys.hide_videos = 35; // KEY_H
+    
+    VideoConfig v1;
+    v1.enabled = true;
+    v1.playlists = {"file.mp4"};
+    v1.start_trigger_key = 16; // KEY_Q
+    v1.keys.next = 106; // KEY_RIGHT
+    config.videos.push_back(v1);
+
+    auto errors = ConfigValidator::validate(config);
+    EXPECT_TRUE(errors.empty());
+}
+
+TEST(ConfigValidatorTest, DuplicateKeyDetected) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.global_keys.hide_videos = 35; // KEY_H
+    
+    VideoConfig v1;
+    v1.enabled = true;
+    v1.playlists = {"file.mp4"};
+    v1.start_trigger_key = 35; // Duplicate with global_keys!
+    config.videos.push_back(v1);
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_EQ(errors.size(), 1);
+    EXPECT_NE(errors[0].find("Duplicate key binding"), std::string::npos);
+}
+
+TEST(ConfigValidatorTest, MissingPlaylist) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    
+    VideoConfig v1;
+    v1.enabled = true;
+    v1.playlists.clear(); // Empty playlist!
+    config.videos.push_back(v1);
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_EQ(errors.size(), 1);
+    EXPECT_NE(errors[0].find("has no playlists"), std::string::npos);
+}
+
+TEST(ConfigValidatorTest, OutOfRangeCoordinates) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    
+    VideoConfig v1;
+    v1.enabled = true;
+    v1.playlists = {"file.mp4"};
+    v1.x = 1.5f; // Invalid!
+    config.videos.push_back(v1);
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_EQ(errors.size(), 1);
+    EXPECT_NE(errors[0].find("out of range"), std::string::npos);
+}
