@@ -5,80 +5,119 @@ A high-performance, bare-metal dashboard system for Intel NUC devices, built dir
 ## Objective
 To create a zero-overhead, ultra-low resource dashboard that utilizes native Intel hardware features for 3D graphics and video playback without the need for an X server or Wayland compositor.
 
-## Design Philosophy
-- **Bare Metal Performance:** Direct interaction with Linux Kernel subsystems (`DRM`, `KMS`, `GBM`, `EGL`).
-- **Minimal Dependencies:** Avoid heavy abstraction layers (like SDL2, Qt, X11) to maximize resource efficiency.
-- **Hardware Acceleration:** Leverage Intel Quick Sync (VAAPI) for zero-copy video decoding directly into OpenGL textures via DMA-BUFs.
-- **Audio Integration:** Synchronized ALSA audio playback directly from the video container.
-- **Resilience:** Built-in handling for display hotplugging and graceful hardware teardown.
+---
 
-## Current Tech Stack
-- **Graphics API:** OpenGL ES 2.0 (via EGL).
-- **Buffer Management:** GBM (Generic Buffer Management).
-- **Display Mode Setting:** KMS/DRM (Kernel Mode Setting).
-- **Build System:** CMake.
-- **CI/CD:** GitHub Actions (Ubuntu standard runners).
+## 🛠 Installation & Deployment
 
-## Project Structure
-- `src/main.cpp`: Core display initialization and rendering loop.
-- `CMakeLists.txt`: Build configuration.
-- `.github/workflows/`: CI/CD pipelines.
-- `.cursorrules`: Strict development rules for AI assistants.
-
-## User Permissions
-To run the application without `sudo`, your user must be part of the `video` and `render` groups:
+### 1. Automated Installation
+The project includes a comprehensive installation script that handles dependencies, permissions, and service setup.
 
 ```bash
-sudo usermod -aG video,render $USER
-```
-*Note: You must log out and back in for these changes to take effect.*
+# Clone the repository
+git clone https://github.com/arunj123/nuc_display.git
+cd nuc_display
 
-## Local Build & Run
+# Run the installer
+chmod +x scripts/install.sh
+./scripts/install.sh
+```
+
+**What this script does:**
+- Installs all system dependencies (FFmpeg, DRM, ALSA, FreeType, etc.).
+- Adds your user to critical hardware groups (`video`, `render`, `audio`, `plugdev`).
+- Builds the project using CMake.
+- Installs and enables the `nuc_display.service` for automatic startup on boot.
+
+### 2. Manual Build
+If you prefer to build manually:
 ```bash
-cmake -S . -B build
-cmake --build build
-./build/nuc_display
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo systemctl restart nuc_display
 ```
 
-## Configuration (`config.json`)
-The application is fully configurable via `config.json`, which is auto-generated in the working directory on the first launch if it does not exist.
-You can configure your location for weather and sunrise/sunset times, as well as customize the stocks displayed.
+---
+
+## ⚙️ Configuration (`config.json`)
+
+The application is configured via `config.json`. A default file is generated on first run.
+
+### Global Settings
+- `location`: Set your address. If `lat`/`lon` are `0.0`, it will auto-geocode on first launch.
+- `stocks`: Array of stock objects with `symbol`, `name`, and `currency_symbol`.
+
+### Multi-Region Video Configuration
+The dashboard supports multiple, independent hardware-accelerated video streams.
 
 ```json
 {
-    "location": {
-        "address": "Hasenbuk, Nürnberg, Germany",
-        "lat": 0.0,
-        "lon": 0.0
-    },
-    "stocks": [
-        {"symbol": "^IXIC", "name": "NASDAQ", "currency_symbol": "$"},
-        {"symbol": "APC.F", "name": "Apple", "currency_symbol": "€"}
+    "videos": [
+        {
+            "enabled": true,
+            "x": 0.70, "y": 0.03, "w": 0.25, "h": 0.20,
+            "playlists": ["tests/samples/bbb_sunflower_1080p.mp4"],
+            "audio_enabled": true,
+            "audio_device": "default"
+        },
+        {
+            "enabled": true,
+            "x": 0.03, "y": 0.80, "w": 0.30, "h": 0.15,
+            "playlists": ["tests/samples/sintel_trailer.mp4"],
+            "audio_enabled": false
+        }
     ]
 }
 ```
-*Note: If `lat` and `lon` are 0.0, the application will automatically call the Open-Meteo Geocoding API to resolve the address string.*
 
-## Standalone Screenshot Tool
-The application includes a built-in headless screenshot module using `glReadPixels`. To capture a screenshot manually at any time without restarting the app, a separate utility is provided:
+| Field | Description |
+| :--- | :--- |
+| `x, y, w, h` | Destination normalized coordinates (0.0 to 1.0) on the display. |
+| `src_x, src_y, src_w, src_h` | (Optional) Source cropping region within the video. |
+| `playlists` | Array of file paths to loop through. |
+| `audio_enabled` | Enable/Disable ALSA audio for this region. |
+| `audio_device` | ALSA device name (e.g., `default`, `plughw:0,3`). |
+
+---
+
+## 🖥 Service Management
+
+The application runs as a systemd service, ensuring high availability.
 
 ```bash
-# Build the tool
+# Check status and health metrics
+systemctl status nuc_display
+
+# View real-time logs (including performance snapshots)
+journalctl -u nuc_display -f
+
+# Restart the engine
+sudo systemctl restart nuc_display
+```
+
+### Performance Monitoring
+The engine logs hardware stats every 30 seconds:
+`[Perf] CPU: 35% | RAM: 270MB | GPU: 100/700 MHz | Temp: 48°C | Uptime: 3600s`
+
+---
+
+## 📸 Headless Screenshots
+
+Since there is no window manager, manual screenshots require a signal:
+
+```bash
+# Build the utility
 cmake --build build --target screenshot_tool
 
-# Run the tool to trigger a screenshot on the running nuc_display process
+# Trigger a capture on the running service
 ./build/screenshot_tool
 ```
-This tool sends a `SIGUSR1` signal to the `nuc_display` process, which triggers a capture of the current framebuffer to `manual_screenshot.png`.
+This saves a PNG to `manual_screenshot.png`.
 
-## Advanced Features
-- **GPU Weather Visualizations:** Real-time 3D volumetric Fractional Brownian Motion (fBM) clouds.
-- **Hardware-Accelerated Video Playback:** Supports a `playlists` array in `config.json` with multi-video looping and hardware-accurate NV12 color correction.
-- **Integrated Audio:** Decodes and writes interleaved audio samples to the ALSA `default` device synchronously with the video.
-- **Top-Right Corner Overlay:** Video playback is anchored to the top-right corner to avoid obscuring dashboard data.
-- **Zero-Copy DRM Pipeline:** Frames are passed from the VAAPI decoder to EGL via DMA-BUFs, bypassing CPU memory copies.
-- **Day/Night Cycle:** The weather shader respects the actual Sunrise/Sunset times from your geographical location.
-- **Dynamic Warnings:** Color-coded layout warnings for High UV Index and Glatteis (Black Ice).
-- **Multi-layered Rain & Snow Animations:** Complex falling speeds using native GLSL.
-- **Hybrid News Ticker:** Implements vertical and horizontal state-machine logic.
-- **Resilient Offline Architecture:** Recovers automatically once connectivity is restored.
+---
+
+## 📜 Video Credits
+This project uses samples from the Blender Foundation and other open sources. See [tests/samples/CREDITS.md](tests/samples/CREDITS.md) for full attributions.
+
+## ⚖️ License
+[Insert License Here - e.g., MIT]
