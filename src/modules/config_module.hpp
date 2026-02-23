@@ -32,7 +32,7 @@ struct VideoConfig {
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
-    VideoConfig video;
+    std::vector<VideoConfig> videos;
 };
 
 class ConfigModule {

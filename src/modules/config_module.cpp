@@ -81,20 +81,24 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     }
     j["stocks"] = stocks;
 
-    j["video"] = {
-        {"enabled", config.video.enabled},
-        {"audio_enabled", config.video.audio_enabled},
-        {"audio_device", config.video.audio_device},
-        {"playlists", config.video.playlists},
-        {"x", config.video.x},
-        {"y", config.video.y},
-        {"w", config.video.w},
-        {"h", config.video.h},
-        {"src_x", config.video.src_x},
-        {"src_y", config.video.src_y},
-        {"src_w", config.video.src_w},
-        {"src_h", config.video.src_h}
-    };
+    nlohmann::json videos = nlohmann::json::array();
+    for (const auto& v : config.videos) {
+        nlohmann::json vj;
+        vj["enabled"] = v.enabled;
+        vj["audio_enabled"] = v.audio_enabled;
+        vj["audio_device"] = v.audio_device;
+        vj["playlists"] = v.playlists;
+        vj["x"] = v.x;
+        vj["y"] = v.y;
+        vj["w"] = v.w;
+        vj["h"] = v.h;
+        vj["src_x"] = v.src_x;
+        vj["src_y"] = v.src_y;
+        vj["src_w"] = v.src_w;
+        vj["src_h"] = v.src_h;
+        videos.push_back(vj);
+    }
+    j["videos"] = videos;
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -138,18 +142,20 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
         };
 
         // Default Video Config
-        config.video.enabled = true;
-        config.video.audio_enabled = false;
-        config.video.audio_device = "default";
-        config.video.playlists = {"tests/sample.mp4"};
-        config.video.x = 0.70f;
-        config.video.y = 0.03f;
-        config.video.w = 0.25f;
-        config.video.h = 0.20f;
-        config.video.src_x = 0.0f;
-        config.video.src_y = 0.0f;
-        config.video.src_w = 1.0f;
-        config.video.src_h = 1.0f;
+        VideoConfig v;
+        v.enabled = true;
+        v.audio_enabled = false;
+        v.audio_device = "default";
+        v.playlists = {"tests/sample.mp4"};
+        v.x = 0.70f;
+        v.y = 0.03f;
+        v.w = 0.25f;
+        v.h = 0.20f;
+        v.src_x = 0.0f;
+        v.src_y = 0.0f;
+        v.src_w = 1.0f;
+        v.src_h = 1.0f;
+        config.videos.push_back(v);
 
         needs_save = true;
     } else {
@@ -188,41 +194,44 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 needs_save = true; // Repair missing array
             }
             
-            if (j.contains("video")) {
-                const auto& video_json = j["video"];
-                config.video.enabled = video_json.value("enabled", true);
-                config.video.audio_enabled = video_json.value("audio_enabled", false);
-                config.video.audio_device = video_json.value("audio_device", "default");
+            auto parse_video = [](const nlohmann::json& video_json) {
+                VideoConfig v;
+                v.enabled = video_json.value("enabled", true);
+                v.audio_enabled = video_json.value("audio_enabled", false);
+                v.audio_device = video_json.value("audio_device", "default");
                 
                 if (video_json.contains("playlists") && video_json["playlists"].is_array()) {
                     for (const auto& item : video_json["playlists"]) {
-                        if (item.is_string()) config.video.playlists.push_back(item);
+                        if (item.is_string()) v.playlists.push_back(item);
                     }
-                } else {
-                    config.video.playlists = {"tests/sample.mp4"};
-                    needs_save = true;
                 }
                 
-                config.video.x = video_json.value("x", 0.70f);
-                config.video.y = video_json.value("y", 0.03f);
-                config.video.w = video_json.value("w", 0.25f);
-                config.video.h = video_json.value("h", 0.20f);
-                config.video.src_x = video_json.value("src_x", 0.0f);
-                config.video.src_y = video_json.value("src_y", 0.0f);
-                config.video.src_w = video_json.value("src_w", 1.0f);
-                config.video.src_h = video_json.value("src_h", 1.0f);
+                v.x = video_json.value("x", 0.0f);
+                v.y = video_json.value("y", 0.0f);
+                v.w = video_json.value("w", 1.0f);
+                v.h = video_json.value("h", 1.0f);
+                v.src_x = video_json.value("src_x", 0.0f);
+                v.src_y = video_json.value("src_y", 0.0f);
+                v.src_w = video_json.value("src_w", 1.0f);
+                v.src_h = video_json.value("src_h", 1.0f);
+                return v;
+            };
+
+            if (j.contains("videos") && j["videos"].is_array()) {
+                for (const auto& v_json : j["videos"]) {
+                    config.videos.push_back(parse_video(v_json));
+                }
+            } else if (j.contains("video")) {
+                // Fallback for single video
+                config.videos.push_back(parse_video(j["video"]));
             } else {
-                config.video.enabled = true;
-                config.video.audio_enabled = false;
-                config.video.playlists = {"tests/sample.mp4"};
-                config.video.x = 0.70f;
-                config.video.y = 0.03f;
-                config.video.w = 0.25f;
-                config.video.h = 0.20f;
-                config.video.src_x = 0.0f;
-                config.video.src_y = 0.0f;
-                config.video.src_w = 1.0f;
-                config.video.src_h = 1.0f;
+                // Default if none
+                VideoConfig v;
+                v.enabled = true;
+                v.audio_enabled = false;
+                v.playlists = {"tests/sample.mp4"};
+                v.x = 0.70f; v.y = 0.03f; v.w = 0.25f; v.h = 0.20f;
+                config.videos.push_back(v);
                 needs_save = true;
             }
             

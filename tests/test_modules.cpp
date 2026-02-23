@@ -98,11 +98,12 @@ TEST_F(ConfigModuleTest, CreateDefaultWhenFileMissing) {
     ASSERT_TRUE(result.has_value());
     
     // Video config defaults Check
-    EXPECT_TRUE(result->video.enabled);
-    EXPECT_FALSE(result->video.audio_enabled);
-    EXPECT_EQ(result->video.playlists[0], "tests/sample.mp4");
-    EXPECT_FLOAT_EQ(result->video.x, 0.70f);
-    EXPECT_FLOAT_EQ(result->video.src_w, 1.0f);
+    ASSERT_FALSE(result->videos.empty());
+    EXPECT_TRUE(result->videos[0].enabled);
+    EXPECT_FALSE(result->videos[0].audio_enabled);
+    EXPECT_EQ(result->videos[0].playlists[0], "tests/sample.mp4");
+    EXPECT_FLOAT_EQ(result->videos[0].x, 0.70f);
+    EXPECT_FLOAT_EQ(result->videos[0].src_w, 1.0f);
 }
 
 TEST_F(ConfigModuleTest, ParseValidConfig) {
@@ -127,14 +128,15 @@ TEST_F(ConfigModuleTest, ParseValidConfig) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->location.address, "London, UK");
     EXPECT_EQ(result->stocks.size(), 2);
-    EXPECT_FALSE(result->video.enabled);
-    EXPECT_TRUE(result->video.audio_enabled);
-    EXPECT_EQ(result->video.playlists.size(), 2);
-    EXPECT_EQ(result->video.playlists[0], "custom_video1.mp4");
-    EXPECT_EQ(result->video.playlists[1], "custom_video2.mp4");
-    EXPECT_FLOAT_EQ(result->video.x, 0.1f);
-    EXPECT_FLOAT_EQ(result->video.src_x, 0.1f);
-    EXPECT_FLOAT_EQ(result->video.src_w, 0.8f);
+    ASSERT_FALSE(result->videos.empty());
+    EXPECT_FALSE(result->videos[0].enabled);
+    EXPECT_TRUE(result->videos[0].audio_enabled);
+    EXPECT_EQ(result->videos[0].playlists.size(), 2);
+    EXPECT_EQ(result->videos[0].playlists[0], "custom_video1.mp4");
+    EXPECT_EQ(result->videos[0].playlists[1], "custom_video2.mp4");
+    EXPECT_FLOAT_EQ(result->videos[0].x, 0.1f);
+    EXPECT_FLOAT_EQ(result->videos[0].src_x, 0.1f);
+    EXPECT_FLOAT_EQ(result->videos[0].src_w, 0.8f);
 }
 
 TEST_F(ConfigModuleTest, HandleCorruptedJson) {
@@ -161,6 +163,7 @@ TEST_F(ConfigModuleTest, HandleMissingVideoNode) {
     auto result = config.load_or_create_config(test_file_);
     ASSERT_TRUE(result.has_value());
     // Should fallback to default video config and save
-    EXPECT_TRUE(result->video.enabled);
-    EXPECT_EQ(result->video.playlists[0], "tests/sample.mp4");
+    ASSERT_FALSE(result->videos.empty());
+    EXPECT_TRUE(result->videos[0].enabled);
+    EXPECT_EQ(result->videos[0].playlists[0], "tests/sample.mp4");
 }

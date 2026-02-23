@@ -98,21 +98,23 @@ int main() {
     // Image Loading
     auto image_loader = std::make_unique<modules::ImageLoader>();
 
-    // Video Decoding (Hardware Accelerated)
-    auto video_decoder = std::make_unique<modules::VideoDecoder>();
-    video_decoder->init_vaapi(display->drm_fd());
-    
-    // Audio Playback
-    video_decoder->set_audio_enabled(app_config.video.audio_enabled);
-    if (app_config.video.audio_enabled) {
-        video_decoder->init_audio(app_config.video.audio_device);
-    }
-    
-    if (app_config.video.enabled) {
-        if (!app_config.video.playlists.empty()) {
-            video_decoder->load_playlist(app_config.video.playlists);
+    // Video Decoding (Hardware Accelerated) - Multi-instance support
+    std::vector<std::unique_ptr<modules::VideoDecoder>> video_decoders;
+    for (const auto& v_config : app_config.videos) {
+        if (!v_config.enabled) continue;
+        
+        auto decoder = std::make_unique<modules::VideoDecoder>();
+        decoder->init_vaapi(display->drm_fd());
+        decoder->set_audio_enabled(v_config.audio_enabled);
+        if (v_config.audio_enabled) {
+            decoder->init_audio(v_config.audio_device);
+        }
+        
+        if (!v_config.playlists.empty()) {
+            decoder->load_playlist(v_config.playlists);
+            video_decoders.push_back(std::move(decoder));
         } else {
-            std::cerr << "[Core] No videos defined in playlist config.\n";
+            std::cerr << "[Core] No videos defined for a configured video region.\n";
         }
     }
 
@@ -149,7 +151,8 @@ int main() {
     bool stock_online = true;
     bool news_online = true;
 
-    std::future<std::expected<void, modules::MediaError>> video_process_task;
+    // Multi-video background tasks
+    std::vector<std::future<std::expected<void, modules::MediaError>>> video_process_tasks(video_decoders.size());
 
     std::cout << "--- Starting main loop ---" << std::endl;
 
@@ -279,35 +282,33 @@ int main() {
         stock_module->render(*renderer, *text_renderer, render_time_sec);
         news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
 
-        // Hardware Accelerated Video Playback (Zero-Copy)
-        if (app_config.video.enabled) {
-            // Process decoding (fetches packets and decodes into buffer) in background
-            if (!video_process_task.valid() || video_process_task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                if (video_process_task.valid()) {
-                    auto res = video_process_task.get();
+        // Hardware Accelerated Video Playback (Multi-Region)
+        for (size_t i = 0; i < video_decoders.size(); ++i) {
+            auto& decoder = video_decoders[i];
+            auto& v_config = app_config.videos[i];
+            auto& task = video_process_tasks[i];
+
+            if (!task.valid() || task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                if (task.valid()) {
+                    auto res = task.get();
                     if (!res) {
-                        // Log error but continue
-                        // std::cerr << "[Video] Background process error: " << (int)res.error() << "\n";
+                        // std::cerr << "[Video " << i << "] Error: " << (int)res.error() << "\n";
                     }
                 }
-                video_process_task = thread_pool.enqueue([&video_decoder, render_time_sec]() {
-                    return video_decoder->process(render_time_sec);
+                task = thread_pool.enqueue([&decoder, render_time_sec]() {
+                    return decoder->process(render_time_sec);
                 });
             }
 
-            // Render the next available frame (always check if a frame is ready)
-            bool playing = video_decoder->render(*renderer, display->egl_display(), 
-                                                 app_config.video.src_x, app_config.video.src_y,
-                                                 app_config.video.src_w, app_config.video.src_h,
-                                                 app_config.video.x, app_config.video.y, 
-                                                 app_config.video.w, app_config.video.h, 
-                                                 render_time_sec);
+            bool playing = decoder->render(*renderer, display->egl_display(), 
+                                           v_config.src_x, v_config.src_y,
+                                           v_config.src_w, v_config.src_h,
+                                           v_config.x, v_config.y, 
+                                           v_config.w, v_config.h, 
+                                           render_time_sec);
             if (!playing) {
-                // Loop to the next video in the playlist
-                if (video_process_task.valid()) {
-                    video_process_task.get(); // Wait for background process to finish before loading next
-                }
-                video_decoder->next_video();
+                if (task.valid()) task.get();
+                decoder->next_video();
             }
         }
         // ALSA is now processed iteratively inside video_decoder->render() via packet interleaving

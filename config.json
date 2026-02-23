@@ -31,23 +31,68 @@
             "symbol": "TL0.F"
         }
     ],
-    "video": {
-        "audio_device": "default",
-        "audio_enabled": true,
-        "enabled": true,
-        "h": 0.20,
-        "playlists": [
-            "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4",
-            "tests/samples/sintel_trailer.mp4",
-            "tests/samples/sample_audio.mp4",
-            "tests/sample_with_audio.mp4"
-        ],
-        "src_h": 1.0,
-        "src_w": 1.0,
-        "src_x": 0.0,
-        "src_y": 0.0,
-        "w": 0.25,
-        "x": 0.70,
-        "y": 0.03
-    }
+    "videos": [
+        {
+            "audio_device": "default",
+            "audio_enabled": true,
+            "enabled": true,
+            "playlists": [
+                "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4",
+                "tests/samples/sample_audio.mp4"
+            ],
+            "x": 0.70,
+            "y": 0.03,
+            "w": 0.25,
+            "h": 0.20,
+            "src_x": 0.0,
+            "src_y": 0.0,
+            "src_w": 1.0,
+            "src_h": 1.0
+        },
+        {
+            "audio_enabled": false,
+            "enabled": true,
+            "playlists": [
+                "tests/samples/sintel_trailer.mp4"
+            ],
+            "x": 0.70,
+            "y": 0.25,
+            "w": 0.25,
+            "h": 0.20,
+            "src_x": 0.0,
+            "src_y": 0.0,
+            "src_w": 1.0,
+            "src_h": 1.0
+        },
+        {
+            "audio_enabled": false,
+            "enabled": true,
+            "playlists": [
+                "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4"
+            ],
+            "x": 0.70,
+            "y": 0.47,
+            "w": 0.25,
+            "h": 0.20,
+            "src_x": 0.5,
+            "src_y": 0.5,
+            "src_w": 0.5,
+            "src_h": 0.5
+        },
+        {
+            "audio_enabled": false,
+            "enabled": true,
+            "playlists": [
+                "tests/sample_uhd_hevc_with_audio.mp4"
+            ],
+            "x": 0.70,
+            "y": 0.69,
+            "w": 0.25,
+            "h": 0.20,
+            "src_x": 0.0,
+            "src_y": 0.0,
+            "src_w": 1.0,
+            "src_h": 1.0
+        }
+    ]
 }
