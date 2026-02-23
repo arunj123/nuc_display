@@ -81,6 +81,7 @@ set(SRC_FILES
     src/modules/stock_module.cpp
     src/modules/screenshot_module.cpp
     src/modules/news_module.cpp
+    src/modules/input_module.cpp
     src/modules/performance_monitor.cpp
 )
 

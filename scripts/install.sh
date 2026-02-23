@@ -15,10 +15,7 @@ sudo apt-get install -y \
 
 echo "--- 2. Setting Up User Permissions ---"
 # Add current user to hardware access groups
-sudo usermod -aG video $USER
-sudo usermod -aG render $USER
-sudo usermod -aG audio $USER
-sudo usermod -aG plugdev $USER
+sudo usermod -aG video,render,audio,plugdev,input $USER
 
 echo "--- 3. Building the Application ---"
 mkdir -p build

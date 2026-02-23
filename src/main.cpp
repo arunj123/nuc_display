@@ -21,6 +21,7 @@
 #include "modules/news_module.hpp"
 #include "modules/video_decoder.hpp"
 #include "modules/container_reader.hpp"
+#include "modules/input_module.hpp"
 #include "modules/performance_monitor.hpp"
 
 using namespace nuc_display;
@@ -139,6 +140,10 @@ int main() {
 
     // Performance Monitor
     auto perf_monitor = std::make_unique<modules::PerformanceMonitor>();
+
+    // Input Module (Keyboard)
+    auto input_module = std::make_unique<modules::InputModule>();
+    input_module->start();
 
     auto last_weather_update = std::chrono::steady_clock::now();
     auto last_stock_update = std::chrono::steady_clock::now();

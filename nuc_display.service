@@ -19,7 +19,7 @@ Environment=ALSA_CARD=0
 
 # Security and Sandbox (Optional but good practice)
 # We need to keep some privileges for DRM/Render access
-SupplementaryGroups=video render audio plugdev
+SupplementaryGroups=video render audio plugdev input
 
 [Install]
 WantedBy=multi-user.target
