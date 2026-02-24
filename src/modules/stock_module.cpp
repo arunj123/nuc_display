@@ -139,31 +139,41 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
         curl_easy_setopt(curl, CURLOPT_URL, ("https://query1.finance.yahoo.com/v10/finance/quoteSummary/" + config.symbol + "?modules=assetProfile").c_str());
         
         if (curl_easy_perform(curl) == CURLE_OK) {
+            std::string website = "";
             try {
                 auto p_json = nlohmann::json::parse(profile_readBuffer);
                 if (p_json.contains("quoteSummary") && p_json["quoteSummary"]["result"].is_array() && !p_json["quoteSummary"]["result"].empty()) {
                     auto profile = p_json["quoteSummary"]["result"][0]["assetProfile"];
                     if (profile.contains("website") && profile["website"].is_string()) {
-                        std::string website = profile["website"];
+                        std::string raw_website = profile["website"];
                         // Basic domain extraction
-                        size_t start = website.find("://");
-                        if (start != std::string::npos) website = website.substr(start + 3);
-                        size_t www = website.find("www.");
-                        if (www == 0) website = website.substr(4);
-                        size_t end = website.find("/");
-                        if (end != std::string::npos) website = website.substr(0, end);
-                        
-                        // Fire off async curl to download logo
-                        if (!website.empty()) {
-                            std::string cmd = "mkdir -p assets/stocks && curl -sL -m 3 'https://logo.clearbit.com/" + website + "' -o " + icon_path + " &";
-                            int sys_res = system(cmd.c_str());
-                            (void)sys_res;
-                        }
+                        size_t start = raw_website.find("://");
+                        if (start != std::string::npos) raw_website = raw_website.substr(start + 3);
+                        size_t www = raw_website.find("www.");
+                        if (www == 0) raw_website = raw_website.substr(4);
+                        size_t end = raw_website.find("/");
+                        if (end != std::string::npos) raw_website = raw_website.substr(0, end);
+                        website = raw_website;
                     }
                 }
             } catch (...) {
-                // Ignore profile parse errors, logo is optional
+                // Ignore profile parse errors
             }
+
+            // Try Clearbit first if website is known, fallback to UI-Avatars monogram
+            std::string clean_symbol = config.symbol;
+            std::replace(clean_symbol.begin(), clean_symbol.end(), '.', '+'); // NVD.F -> NVD+F
+            
+            std::string cmd = "mkdir -p assets/stocks && { ";
+            if (!website.empty()) {
+                cmd += "curl -sL -m 5 'https://logo.clearbit.com/" + website + "?size=128' -o " + icon_path + " ; ";
+            }
+            // Fallback: If no file exists, or the file exists but is under 2KB (Clearbit 404), fetch UI-Avatar fallback
+            cmd += "if [ ! -s " + icon_path + " ] || [ $(cat " + icon_path + " 2>/dev/null | wc -c) -lt 2048 ]; then ";
+            cmd += "curl -sL -m 5 'https://ui-avatars.com/api/?name=" + clean_symbol + "&background=random&color=fff&size=128&font-size=0.4' -o " + icon_path + " ; fi ; } >/dev/null 2>&1 &";
+            
+            int sys_res = system(cmd.c_str());
+            (void)sys_res;
         }
     }
 
@@ -268,12 +278,16 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
                         tex_id = renderer.create_texture(loader.get_rgba_data().data(), loader.width(), loader.height(), loader.channels());
                         icon_textures_[data.symbol] = tex_id;
                         has_icon = (tex_id > 0);
+                        std::cout << "[Stock] Successfully loaded logo for " << data.symbol << std::endl;
                     } else {
+                        std::cerr << "[Stock] Failed to load STB image for " << data.symbol << " at " << path << std::endl;
+                        
                         // Mark as attempted so we don't spam loader on an invalid/corrupt image file
                         icon_attempted_[data.symbol] = true;
                         
                         // If it's extremely small, it's likely a 404 HTML body from Clearbit or empty. Delete it.
                         if (std::filesystem::file_size(path) < 2048) {
+                            std::cerr << "[Stock] File too small, deleting " << path << std::endl;
                             std::filesystem::remove(path);
                         }
                     }
@@ -282,23 +296,24 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         }
     }
 
+    float title_x = base_x;
     if (has_icon) {
         float aspect = (float)renderer.width() / renderer.height();
-        renderer.draw_quad(tex_id, base_x, current_y - 0.04f, icon_size, icon_size * aspect, 1.0f, 1.0f, 1.0f, alpha);
-        base_x += icon_size + 0.02f; // Shift text to the right
+        renderer.draw_quad(tex_id, base_x, current_y - 0.06f, icon_size, icon_size * aspect, 1.0f, 1.0f, 1.0f, alpha);
+        title_x += icon_size + 0.02f; // Shift ONLY the title text to the right
     }
 
     // 1. Draw Symbol (Large & Bold)
-    text_renderer.set_pixel_size(0, 95); // Match time size from Weather
+    text_renderer.set_pixel_size(0, 85); // Made slightly smaller to fit nicely next to the logo
     if (auto glyphs = text_renderer.shape_text(data.symbol)) {
-        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
+        renderer.draw_text(glyphs.value(), title_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
     }
     
     // Draw Name (Subtle Grey, strictly below symbol)
     current_y += 0.06f;
     text_renderer.set_pixel_size(0, 32);
     if (auto glyphs = text_renderer.shape_text(data.name)) {
-        renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
+        renderer.draw_text(glyphs.value(), title_x, current_y, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
     }
 
     current_y += 0.14f;

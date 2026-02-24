@@ -22,7 +22,7 @@ jobs:
           libva-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev \
           libasound2-dev libfreetype-dev libharfbuzz-dev libjpeg-dev libpng-dev \
           libcurl4-openssl-dev \
-          gcovr
+          gcovr valgrind
 
     - name: Configure CMake
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -33,6 +33,13 @@ jobs:
     - name: Run Tests
       working-directory: build
       run: ctest --output-on-failure
+
+    - name: Run Memory Leak Checks
+      working-directory: build
+      run: |
+        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_video
+        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_utils
+        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_modules
 
     - name: Generate Coverage Report
       run: |
