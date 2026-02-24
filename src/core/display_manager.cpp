@@ -332,7 +332,7 @@ void DisplayManager::process_drm_events(int timeout_ms) {
     evctx.version = DRM_EVENT_CONTEXT_VERSION;
     evctx.page_flip_handler = page_flip_handler;
 
-    struct pollfd pfd = { .fd = drm_fd_, .events = POLLIN };
+    struct pollfd pfd = { .fd = drm_fd_, .events = POLLIN, .revents = 0 };
     
     while (waiting_for_flip_) {
         if (poll(&pfd, 1, timeout_ms) > 0) {

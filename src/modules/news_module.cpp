@@ -49,7 +49,6 @@ void NewsModule::update_headlines() {
     // Find all <item>...</item> blocks
     std::string::size_type pos = 0;
     // Skip the first <title> which is the feed title
-    bool first_title_skipped = false;
     
     while ((pos = readBuffer.find("<item>", pos)) != std::string::npos) {
         auto end_pos = readBuffer.find("</item>", pos);

@@ -20,6 +20,7 @@ StockModule::StockModule() {
 StockModule::~StockModule() {
     curl_global_cleanup();
     // Texture cleanup
+    /*
     for (auto const& [symbol, tex_id] : icon_textures_) {
         // We need a way to delete textures. Assuming renderer is not here, 
         // but textures are created on the main thread during render.
@@ -27,6 +28,7 @@ StockModule::~StockModule() {
         // or just accept that they live for the app duration.
         // However, we can't easily call renderer.delete_texture(tex_id) here without a renderer ref.
     }
+    */
 }
 
 void StockModule::add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol) {
