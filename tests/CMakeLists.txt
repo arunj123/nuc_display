@@ -68,7 +68,6 @@ target_link_libraries(test_video
 )
 
 # Copy sample videos to build directory for testing
-configure_file(sample.mp4 sample.mp4 COPYONLY)
 configure_file(sample_with_audio.mp4 sample_with_audio.mp4 COPYONLY)
 configure_file(sample_no_audio.mp4 sample_no_audio.mp4 COPYONLY)
 

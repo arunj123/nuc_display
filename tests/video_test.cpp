@@ -99,7 +99,7 @@ TEST(VideoDecoderTest, PlaylistLoadAndCycle) {
 
 TEST(ContainerReaderTest, OpenValidFile) {
     ContainerReader reader;
-    auto result = reader.open("sample.mp4");
+    auto result = reader.open("sample_with_audio.mp4");
     EXPECT_TRUE(result.has_value());
 
     int video_idx = reader.find_video_stream();
@@ -132,7 +132,7 @@ TEST(ContainerReaderTest, OpenFileNoAudio) {
 
 TEST(ContainerReaderTest, ReopenFile) {
     ContainerReader reader;
-    auto result = reader.open("sample.mp4");
+    auto result = reader.open("sample_with_audio.mp4");
     EXPECT_TRUE(result.has_value());
 
     // Re-open a different file (should not crash)
