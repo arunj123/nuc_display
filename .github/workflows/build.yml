@@ -37,7 +37,9 @@ jobs:
   hardware_regression_nuc:
     runs-on: self-hosted
     needs: build_and_test_cloud
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    if: |
+      github.repository_owner == 'arunj123' && 
+      (github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
     
     steps:
     - uses: actions/checkout@v4
