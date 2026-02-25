@@ -105,9 +105,11 @@ void VideoDecoder::cleanup_codec() {
     this->packets_sent_without_frame_ = 0;
     this->eof_reached_ = false;
     this->audio_spillover_.clear();
+    this->audio_prebuffering_ = true;
     this->is_seeking_ = false;
     this->current_pos_sec_ = 0.0;
     this->seek_offset_sec_ = 0.0;
+    this->alsa_error_count_ = 0;
 
     // Properly drain and reset ALSA to prevent EIO errors on next video
     if (this->pcm_handle_) {
@@ -198,6 +200,7 @@ void VideoDecoder::skip_forward(double seconds) {
         
         this->eof_reached_ = false;
         this->audio_spillover_.clear();
+        this->audio_prebuffering_ = true;
         this->video_start_time_ = -1.0;
         this->last_frame_time_ = -1.0;
         this->frames_rendered_ = 0;
@@ -235,6 +238,7 @@ void VideoDecoder::skip_backward(double seconds) {
 
         this->eof_reached_ = false;
         this->audio_spillover_.clear();
+        this->audio_prebuffering_ = true;
         this->video_start_time_ = -1.0;
         this->last_frame_time_ = -1.0;
         this->frames_rendered_ = 0;
@@ -330,8 +334,8 @@ std::expected<void, MediaError> VideoDecoder::load(const std::string& filepath) 
                     snd_pcm_hw_params_set_rate_near(this->pcm_handle_, params, &rate, &dir);
                     
                     // Set buffer and period sizes for smoother playback at ~30fps
-                    // 0.5s buffer (24000 samples at 48k)
-                    snd_pcm_uframes_t buffer_size = rate / 2;
+                    // Increase buffer size to 1.5s to be extremely resilient to video thread decode spikes
+                    snd_pcm_uframes_t buffer_size = rate + (rate / 2); // 1.5 seconds (72000 samples at 48k)
                     snd_pcm_hw_params_set_buffer_size_near(this->pcm_handle_, params, &buffer_size);
                     // 0.1s period
                     snd_pcm_uframes_t period_size = rate / 10;
@@ -596,14 +600,24 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
         if (!this->pcm_handle_ || this->audio_spillover_.empty()) break;
         
         size_t frame_size = 4; // S16 Stereo
-        // Limit buffer size to 1 second
-        if (this->audio_spillover_.size() > 48000 * frame_size) {
-                this->audio_spillover_.erase(this->audio_spillover_.begin(), this->audio_spillover_.end() - 48000 * frame_size);
+        // Limit max buffer size (e.g. 2.5 seconds) to prevent infinite memory usage if ALSA hangs
+        if (this->audio_spillover_.size() > 48000 * 2.5 * frame_size) {
+                this->audio_spillover_.erase(this->audio_spillover_.begin(), this->audio_spillover_.end() - (size_t)(48000 * 2.5 * frame_size));
         }
         
         if (this->audio_spillover_.size() < frame_size) break;
         
-        size_t bytes_to_grab = std::min(this->audio_spillover_.size(), (size_t)4800 * frame_size);
+        // Pre-buffering chunk: Wait until we have at least 0.2s of audio before sending to avoid immediate under-runs
+        size_t prebuffer_threshold = 48000 * 0.2 * frame_size;
+        if (this->audio_prebuffering_) {
+            if (this->audio_spillover_.size() < prebuffer_threshold) {
+                break; // Still prebuffering, don't write to ALSA yet
+            }
+            this->audio_prebuffering_ = false; // Threshold reached, start writing
+            std::cout << "ALSA: Pre-buffering complete (" << this->audio_spillover_.size() << " bytes ready)\n";
+        }
+        
+        size_t bytes_to_grab = std::min(this->audio_spillover_.size(), (size_t)(4800 * 2) * frame_size); // write up to 0.2s at a time
         std::vector<uint8_t> block(this->audio_spillover_.begin(), this->audio_spillover_.begin() + bytes_to_grab);
         
         snd_pcm_sframes_t frames_to_write = block.size() / 4;
@@ -623,13 +637,17 @@ std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
         } else if (written == -EAGAIN) {
             break;
         } else if (written == -EPIPE) {
-            std::cerr << "ALSA: Underrun (EPIPE). Preparing...\n";
-            snd_pcm_prepare(this->pcm_handle_);
+            std::cerr << "ALSA: Underrun (EPIPE). Preparing and entering pre-buffering state...\n";
+            snd_pcm_prepare(this->pcm_handle_); // Recover stream state
+            this->audio_prebuffering_ = true;   // Wait for buffer to fill again
             break;
         } else if (written == -ESTRPIPE) {
             std::cerr << "ALSA: Suspended (ESTRPIPE). Resuming...\n";
             while ((written = snd_pcm_resume(this->pcm_handle_)) == -EAGAIN) sleep(1);
-            if (written < 0) snd_pcm_prepare(this->pcm_handle_);
+            if (written < 0) {
+                snd_pcm_prepare(this->pcm_handle_);
+                this->audio_prebuffering_ = true;
+            }
             break;
         } else {
             if (written < 0) {

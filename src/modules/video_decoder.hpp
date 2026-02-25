@@ -88,6 +88,7 @@ private:
     AVFrame* audio_frame_ = nullptr;
     SwrContext* swr_ctx_ = nullptr;
     std::vector<uint8_t> audio_spillover_;
+    bool audio_prebuffering_ = true;
     
     AVFrame* hw_frame_ = nullptr;
     AVFrame* drm_frame_ = nullptr;
