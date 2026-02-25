@@ -64,6 +64,11 @@ jobs:
         valgrind --leak-check=full --error-exitcode=1 ./tests/test_video_decoder
         valgrind --leak-check=full --error-exitcode=1 ./tests/test_modules
 
+    - name: Deploy to Production Path
+      run: |
+        mkdir -p /home/arun/projects/nuc_display/build
+        cp build_hw/nuc_display /home/arun/projects/nuc_display/build/nuc_display
+
     - name: Restart Production Service
       if: always()
-      run: sudo systemctl start nuc_display.service || true
+      run: sudo systemctl restart nuc_display.service || true
