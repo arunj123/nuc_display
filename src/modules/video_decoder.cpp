@@ -113,10 +113,11 @@ void VideoDecoder::cleanup_codec() {
 
     // Properly drain and reset ALSA to prevent EIO errors on next video
     if (this->pcm_handle_) {
-        // Drain current buffer
-        snd_pcm_drain(this->pcm_handle_);
-        // Reset to prepared state for next stream
-        snd_pcm_prepare(this->pcm_handle_);
+        // Drop any pending frames immediately
+        snd_pcm_drop(this->pcm_handle_);
+        // Free hardware parameters so the device falls back to SND_PCM_STATE_SETUP
+        // This is REQUIRED so that the next `load()` can successfully call `snd_pcm_hw_params`
+        snd_pcm_hw_free(this->pcm_handle_);
     }
 }
 
@@ -341,34 +342,39 @@ std::expected<void, MediaError> VideoDecoder::load(const std::string& filepath) 
                     snd_pcm_uframes_t period_size = rate / 10;
                     snd_pcm_hw_params_set_period_size_near(this->pcm_handle_, params, &period_size, &dir);
                     
-                    snd_pcm_hw_params(this->pcm_handle_, params);
-
-                    // Configure Software Parameters to fix playback stalling
-                    snd_pcm_sw_params_t *sw_params;
-                    snd_pcm_sw_params_alloca(&sw_params);
-                    snd_pcm_sw_params_current(this->pcm_handle_, sw_params);
-                    
-                    // Start playback as soon as we write ANY data (we manually pre-buffer 0.2s before the first write anyway)
-                    snd_pcm_sw_params_set_start_threshold(this->pcm_handle_, sw_params, 1);
-                    // Minimum available frames to consider ALSA ready for writing
-                    snd_pcm_sw_params_set_avail_min(this->pcm_handle_, sw_params, period_size);
-                    
-                    snd_pcm_sw_params(this->pcm_handle_, sw_params);
-
-                    // Initialize SwrContext for conversion to S16 interleaved Stereo
-                    AVChannelLayout out_layout;
-                    av_channel_layout_default(&out_layout, 2);
-                    int swr_ret = swr_alloc_set_opts2(&this->swr_ctx_,
-                        &out_layout, AV_SAMPLE_FMT_S16, (int)rate,
-                        &this->audio_codec_ctx_->ch_layout, this->audio_codec_ctx_->sample_fmt, this->audio_codec_ctx_->sample_rate,
-                        0, nullptr);
-                    av_channel_layout_uninit(&out_layout);
-                    
-                    if (swr_ret == 0) {
-                        this->negotiated_rate_ = rate;
-                        swr_init(this->swr_ctx_);
-                        std::cout << "VideoDecoder: SwrContext initialized for " << av_get_sample_fmt_name(this->audio_codec_ctx_->sample_fmt) 
-                                  << " (" << this->audio_codec_ctx_->sample_rate << "Hz) -> S16 (" << this->negotiated_rate_ << "Hz)\n";
+                    int hw_err = snd_pcm_hw_params(this->pcm_handle_, params);
+                    if (hw_err < 0) {
+                        std::cerr << "ALSA: FATAL: Failed to apply hardware parameters: " << snd_strerror(hw_err) << "\n";
+                        snd_pcm_close(this->pcm_handle_);
+                        this->pcm_handle_ = nullptr;
+                    } else {
+                        // Configure Software Parameters to fix playback stalling
+                        snd_pcm_sw_params_t *sw_params;
+                        snd_pcm_sw_params_alloca(&sw_params);
+                        snd_pcm_sw_params_current(this->pcm_handle_, sw_params);
+                        
+                        // Start playback as soon as we write ANY data (we manually pre-buffer 0.2s before the first write anyway)
+                        snd_pcm_sw_params_set_start_threshold(this->pcm_handle_, sw_params, 1);
+                        // Minimum available frames to consider ALSA ready for writing
+                        snd_pcm_sw_params_set_avail_min(this->pcm_handle_, sw_params, period_size);
+                        
+                        snd_pcm_sw_params(this->pcm_handle_, sw_params);
+    
+                        // Initialize SwrContext for conversion to S16 interleaved Stereo
+                        AVChannelLayout out_layout;
+                        av_channel_layout_default(&out_layout, 2);
+                        int swr_ret = swr_alloc_set_opts2(&this->swr_ctx_,
+                            &out_layout, AV_SAMPLE_FMT_S16, (int)rate,
+                            &this->audio_codec_ctx_->ch_layout, this->audio_codec_ctx_->sample_fmt, this->audio_codec_ctx_->sample_rate,
+                            0, nullptr);
+                        av_channel_layout_uninit(&out_layout);
+                        
+                        if (swr_ret == 0) {
+                            this->negotiated_rate_ = rate;
+                            swr_init(this->swr_ctx_);
+                            std::cout << "VideoDecoder: SwrContext initialized for " << av_get_sample_fmt_name(this->audio_codec_ctx_->sample_fmt) 
+                                      << " (" << this->audio_codec_ctx_->sample_rate << "Hz) -> S16 (" << this->negotiated_rate_ << "Hz)\n";
+                        }
                     }
                 }
             }
