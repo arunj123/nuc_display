@@ -123,5 +123,32 @@
             "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
             "http://feeds.bbci.co.uk/news/rss.xml"
         ]
-    }
+    },
+    "layout": [
+        {
+            "type": "weather"
+        },
+        {
+            "type": "stocks"
+        },
+        {
+            "type": "news"
+        },
+        {
+            "type": "video",
+            "video_index": 0
+        },
+        {
+            "type": "video",
+            "video_index": 1
+        },
+        {
+            "type": "video",
+            "video_index": 2
+        },
+        {
+            "type": "video",
+            "video_index": 3
+        }
+    ]
 }

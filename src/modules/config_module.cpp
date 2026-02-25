@@ -190,6 +190,24 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
         videos.push_back(vj);
     }
     j["videos"] = videos;
+
+    // Layout
+    nlohmann::json layout_arr = nlohmann::json::array();
+    for (const auto& entry : config.layout) {
+        nlohmann::json lj;
+        switch (entry.type) {
+            case LayoutType::Weather: lj["type"] = "weather"; break;
+            case LayoutType::Stocks:  lj["type"] = "stocks"; break;
+            case LayoutType::News:    lj["type"] = "news"; break;
+            case LayoutType::Video:
+                lj["type"] = "video";
+                lj["video_index"] = entry.video_index;
+                break;
+        }
+        layout_arr.push_back(lj);
+    }
+    j["layout"] = layout_arr;
+
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -232,6 +250,14 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
 
         // Default global key: 'v' to hide/show videos
         config.global_keys.hide_videos = key_name_to_code("v");
+
+        // Default layout: weather, stocks, news, then each video on top
+        config.layout = {
+            {LayoutType::Weather, -1},
+            {LayoutType::Stocks, -1},
+            {LayoutType::News, -1},
+            {LayoutType::Video, 0}
+        };
 
         needs_save = true;
     } else {
@@ -362,6 +388,39 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 v.x = 0.70f; v.y = 0.03f; v.w = 0.25f; v.h = 0.20f;
                 config.videos.push_back(v);
                 needs_save = true;
+            }
+
+            // Parse layout
+            if (j.contains("layout") && j["layout"].is_array()) {
+                for (const auto& entry : j["layout"]) {
+                    if (!entry.contains("type") || !entry["type"].is_string()) continue;
+                    std::string type_str = entry["type"];
+                    LayoutEntry le;
+                    if (type_str == "weather") {
+                        le.type = LayoutType::Weather;
+                    } else if (type_str == "stocks") {
+                        le.type = LayoutType::Stocks;
+                    } else if (type_str == "news") {
+                        le.type = LayoutType::News;
+                    } else if (type_str == "video") {
+                        le.type = LayoutType::Video;
+                        le.video_index = entry.value("video_index", 0);
+                    } else {
+                        std::cerr << "[Config] Warning: Unknown layout type '" << type_str << "'. Skipping.\n";
+                        continue;
+                    }
+                    config.layout.push_back(le);
+                }
+            }
+
+            // Generate default layout if not specified
+            if (config.layout.empty()) {
+                config.layout.push_back({LayoutType::Weather, -1});
+                config.layout.push_back({LayoutType::Stocks, -1});
+                config.layout.push_back({LayoutType::News, -1});
+                for (int i = 0; i < (int)config.videos.size(); ++i) {
+                    config.layout.push_back({LayoutType::Video, i});
+                }
             }
             
         } catch (const nlohmann::json::parse_error& e) {

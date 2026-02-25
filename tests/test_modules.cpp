@@ -306,6 +306,63 @@ TEST(StockModuleTest, ManualCyclingLogic) {
     // Test passes if no crash — cycling on empty data is gracefully handled
     SUCCEED();
 }
+
+TEST_F(ConfigModuleTest, ParseLayoutOrder) {
+    nlohmann::json j = {
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", nlohmann::json::array()},
+        {"videos", nlohmann::json::array()},
+        {"layout", {
+            {{"type", "stocks"}},
+            {{"type", "video"}, {"video_index", 2}},
+            {{"type", "weather"}},
+            {{"type", "news"}},
+            {{"type", "video"}, {"video_index", 0}}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->layout.size(), 5);
+    EXPECT_EQ(result->layout[0].type, LayoutType::Stocks);
+    EXPECT_EQ(result->layout[1].type, LayoutType::Video);
+    EXPECT_EQ(result->layout[1].video_index, 2);
+    EXPECT_EQ(result->layout[2].type, LayoutType::Weather);
+    EXPECT_EQ(result->layout[3].type, LayoutType::News);
+    EXPECT_EQ(result->layout[4].type, LayoutType::Video);
+    EXPECT_EQ(result->layout[4].video_index, 0);
+}
+
+TEST_F(ConfigModuleTest, DefaultLayoutWhenMissing) {
+    nlohmann::json j = {
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", nlohmann::json::array()},
+        {"videos", {
+            {{"enabled", true}, {"playlists", {"a.mp4"}}},
+            {{"enabled", true}, {"playlists", {"b.mp4"}}}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    // Default: weather, stocks, news, then one entry per video
+    ASSERT_EQ(result->layout.size(), 5);
+    EXPECT_EQ(result->layout[0].type, LayoutType::Weather);
+    EXPECT_EQ(result->layout[1].type, LayoutType::Stocks);
+    EXPECT_EQ(result->layout[2].type, LayoutType::News);
+    EXPECT_EQ(result->layout[3].type, LayoutType::Video);
+    EXPECT_EQ(result->layout[3].video_index, 0);
+    EXPECT_EQ(result->layout[4].type, LayoutType::Video);
+    EXPECT_EQ(result->layout[4].video_index, 1);
+}
 #include "modules/news_module.hpp"
 #include "stubs_alsa.hpp" // Contains CurlMockState
 

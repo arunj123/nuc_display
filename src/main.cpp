@@ -395,41 +395,58 @@ int main() {
         }
 
         // Stocks and News render independently — they have their own data/placeholders
-        stock_module->render(*renderer, *text_renderer, render_time_sec);
-        news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
+        // --- LAYOUT-DRIVEN RENDERING ---
+        // Iterate over the layout array: first entry drawn first (behind), last drawn last (on top)
+        for (const auto& layer : app_config.layout) {
+            switch (layer.type) {
+                case modules::LayoutType::Weather:
+                    // Weather is rendered as part of the weather_data check above (lines 336-387)
+                    // It's already drawn — skip here to avoid double-rendering
+                    break;
 
-        // Hardware Accelerated Video Playback (Multi-Region)
-        for (size_t i = 0; i < video_decoders.size(); ++i) {
-            auto& decoder = video_decoders[i];
-            auto& v_config = app_config.videos[i];
-            auto& task = video_process_tasks[i];
+                case modules::LayoutType::Stocks:
+                    stock_module->render(*renderer, *text_renderer, render_time_sec);
+                    break;
 
-            if (!task.valid() || task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                if (task.valid()) {
-                    auto res = task.get();
-                    if (!res) {
-                        // std::cerr << "[Video " << i << "] Error: " << (int)res.error() << "\n";
+                case modules::LayoutType::News:
+                    news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
+                    break;
+
+                case modules::LayoutType::Video: {
+                    int vi = layer.video_index;
+                    if (vi < 0 || vi >= (int)video_decoders.size()) break;
+
+                    auto& decoder = video_decoders[vi];
+                    auto& v_config = app_config.videos[vi];
+                    auto& task = video_process_tasks[vi];
+
+                    if (!task.valid() || task.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                        if (task.valid()) {
+                            auto res = task.get();
+                            (void)res;
+                        }
+                        
+                        // Only process decoding if the video is started and not hidden
+                        if (video_started[vi] && !videos_hidden && decoder->is_loaded()) {
+                            task = thread_pool.enqueue([&decoder, render_time_sec]() {
+                                return decoder->process(render_time_sec);
+                            });
+                        }
                     }
-                }
-                
-                // Only process decoding if the video is started and not hidden
-                if (video_started[i] && !videos_hidden && decoder->is_loaded()) {
-                    task = thread_pool.enqueue([&decoder, render_time_sec]() {
-                        return decoder->process(render_time_sec);
-                    });
-                }
-            }
 
-            if (!headless_mode && !videos_hidden && video_started[i] && decoder->is_loaded()) {
-                bool playing = decoder->render(*renderer, display->egl_display(), 
-                                               v_config.src_x, v_config.src_y,
-                                               v_config.src_w, v_config.src_h,
-                                               v_config.x, v_config.y, 
-                                               v_config.w, v_config.h, 
-                                               render_time_sec);
-                if (!playing) {
-                    if (task.valid()) task.get();
-                    decoder->next_video();
+                    if (!headless_mode && !videos_hidden && video_started[vi] && decoder->is_loaded()) {
+                        bool playing = decoder->render(*renderer, display->egl_display(), 
+                                                       v_config.src_x, v_config.src_y,
+                                                       v_config.src_w, v_config.src_h,
+                                                       v_config.x, v_config.y, 
+                                                       v_config.w, v_config.h, 
+                                                       render_time_sec);
+                        if (!playing) {
+                            if (task.valid()) task.get();
+                            decoder->next_video();
+                        }
+                    }
+                    break;
                 }
             }
         }

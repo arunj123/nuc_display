@@ -57,10 +57,23 @@ struct VideoConfig {
     VideoKeysConfig keys;
 };
 
+enum class LayoutType {
+    Weather,
+    Stocks,
+    News,
+    Video
+};
+
+struct LayoutEntry {
+    LayoutType type;
+    int video_index = -1;  // Only used when type == Video
+};
+
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
     std::vector<VideoConfig> videos;
+    std::vector<LayoutEntry> layout;  // Draw order: first = behind, last = on top
     GlobalKeysConfig global_keys;
     StockKeysConfig stock_keys;
 };
