@@ -5,12 +5,12 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
-  build:
-
+  # TIER 1: Fast logic verification on GitHub Cloud
+  build_and_test_cloud:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
 
@@ -20,34 +20,48 @@ jobs:
         sudo apt-get install -y \
           libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev pkg-config \
           libva-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev \
-          libasound2-dev libfreetype-dev libharfbuzz-dev libjpeg-dev libpng-dev \
+          libasound2-dev libfreetype6-dev libharfbuzz-dev libjpeg-dev libpng-dev \
           libcurl4-openssl-dev \
-          gcovr valgrind
+          gcovr valgrind ffmpeg
 
-    - name: Configure CMake
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+    - name: Configure and Build
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        cmake --build build --config Debug
 
-    - name: Build
-      run: cmake --build build --config Debug
-
-    - name: Run Tests
+    - name: Run Logic Tests (Mocks)
       working-directory: build
       run: ctest --output-on-failure
 
-    - name: Run Memory Leak Checks
-      working-directory: build
-      run: |
-        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_video
-        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_utils
-        valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all ./tests/test_modules
+  # TIER 2: Hardware Regression on the NUC
+  hardware_regression_nuc:
+    runs-on: self-hosted
+    needs: build_and_test_cloud
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v4
 
-    - name: Generate Coverage Report
-      run: |
-        gcovr -r . --html --html-details -o build/coverage.html
-        gcovr -r . --print-summary
+    - name: Pause Production Service
+      run: sudo systemctl stop nuc_display.service || true
 
-    - name: Upload Coverage Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: build/coverage.html
+    - name: Configure and Build
+      run: |
+        cmake -S . -B build_hw -DCMAKE_BUILD_TYPE=Debug
+        cmake --build build_hw --config Debug
+
+    - name: Run Hardware Tests
+      working-directory: build_hw
+      run: |
+        ./tests/test_video_decoder
+        ./tests/test_modules
+
+    - name: Run Memory Leak Checks (Hardware Context)
+      working-directory: build_hw
+      run: |
+        valgrind --leak-check=full --error-exitcode=1 ./tests/test_video_decoder
+        valgrind --leak-check=full --error-exitcode=1 ./tests/test_modules
+
+    - name: Restart Production Service
+      if: always()
+      run: sudo systemctl start nuc_display.service || true

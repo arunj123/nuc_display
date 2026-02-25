@@ -10,29 +10,20 @@ VideoDecoder::VideoDecoder() {
 }
 
 VideoDecoder::~VideoDecoder() {
+    this->cleanup_codec();
+    
+    // Free the persistent frames allocated in constructor
     if (this->hw_frame_) {
         av_frame_free(&this->hw_frame_);
-    }
-    if (this->drm_frame_) {
-        av_frame_free(&this->drm_frame_);
-    }
-    if (this->codec_ctx_) {
-        avcodec_free_context(&this->codec_ctx_);
-    }
-    if (this->audio_codec_ctx_) {
-        avcodec_free_context(&this->audio_codec_ctx_);
-    }
-    if (this->hw_device_ctx_) {
-        av_buffer_unref(&this->hw_device_ctx_);
     }
     if (this->audio_frame_) {
         av_frame_free(&this->audio_frame_);
     }
-    if (this->swr_ctx_) {
-        swr_free(&this->swr_ctx_);
+    if (this->drm_frame_) {
+        av_frame_free(&this->drm_frame_);
     }
-    if (this->pcm_handle_) {
-        snd_pcm_close(this->pcm_handle_);
+    if (this->hw_device_ctx_) {
+        av_buffer_unref(&this->hw_device_ctx_);
     }
 }
 
@@ -118,6 +109,23 @@ void VideoDecoder::cleanup_codec() {
         // Free hardware parameters so the device falls back to SND_PCM_STATE_SETUP
         // This is REQUIRED so that the next `load()` can successfully call `snd_pcm_hw_params`
         snd_pcm_hw_free(this->pcm_handle_);
+    }
+
+    // Cleanup EGL resources
+    if (this->current_egl_image_ != EGL_NO_IMAGE_KHR && this->egl_display_ != EGL_NO_DISPLAY) {
+        PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR_ptr = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
+        if (eglDestroyImageKHR_ptr) {
+            eglDestroyImageKHR_ptr(this->egl_display_, this->current_egl_image_);
+        }
+        this->current_egl_image_ = EGL_NO_IMAGE_KHR;
+    }
+    if (this->current_texture_id_ != 0) {
+        glDeleteTextures(1, &this->current_texture_id_);
+        this->current_texture_id_ = 0;
+    }
+    if (this->external_program_ != 0) {
+        glDeleteProgram(this->external_program_);
+        this->external_program_ = 0;
     }
 }
 

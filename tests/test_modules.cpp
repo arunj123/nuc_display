@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "modules/image_loader.hpp"
 #include "modules/text_renderer.hpp"
 
@@ -304,4 +305,52 @@ TEST(StockModuleTest, ManualCyclingLogic) {
 
     // Test passes if no crash — cycling on empty data is gracefully handled
     SUCCEED();
+}
+#include "modules/news_module.hpp"
+#include "stubs_alsa.hpp" // Contains CurlMockState
+
+using namespace nuc_display::tests::mock;
+
+TEST(NewsModuleTest, UserAgentAndFallback) {
+    g_curl_mock.reset();
+    
+    // Mock Google News failure
+    g_curl_mock.mock_errors["https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en"] = CURLE_COULDNT_CONNECT;
+    
+    NewsModule module;
+    module.update_headlines();
+    
+    // Verify it set the User-Agent
+    EXPECT_FALSE(g_curl_mock.last_user_agent.empty());
+    EXPECT_THAT(g_curl_mock.last_user_agent, ::testing::HasSubstr("Mozilla/5.0"));
+    
+    // Verify it requested Google News first
+    ASSERT_GE(g_curl_mock.requested_urls.size(), 2u);
+    EXPECT_EQ(g_curl_mock.requested_urls[0], "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en");
+    
+    // Verify it fell back to BBC News
+    EXPECT_EQ(g_curl_mock.requested_urls[1], "http://feeds.bbci.co.uk/news/rss.xml");
+}
+
+TEST(NewsModuleTest, MalformedAndEmptyRSS) {
+    g_curl_mock.reset();
+    
+    // Google News returns malformed XML
+    g_curl_mock.mock_responses["https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en"] = "<rss><item><title>Broken CDATA";
+    // BBC returns empty string
+    g_curl_mock.mock_responses["http://feeds.bbci.co.uk/news/rss.xml"] = "";
+    
+    NewsModule module;
+    module.update_headlines();
+    
+    // Verify both were requested
+    EXPECT_EQ(g_curl_mock.requested_urls.size(), 2u);
+    // Note: Since everything failed, it shouldn't have any items
+    // But we are mainly testing for lack of crashes here.
+    SUCCEED();
+}
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
