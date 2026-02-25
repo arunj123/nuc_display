@@ -14,8 +14,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Cache APT Dependencies
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt/archives
+        key: apt-cache-${{ runner.os }}-v1
+
     - name: Install Dependencies
       run: |
+        sudo rm -f /etc/apt/apt.conf.d/docker-clean
         sudo apt-get update
         sudo apt-get install -y \
           libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev pkg-config \

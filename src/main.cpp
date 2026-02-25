@@ -216,11 +216,17 @@ int main() {
                 auto& decoder = video_decoders[i];
                 auto& v_config = app_config.videos[i];
 
-                // Start trigger
-                if (v_config.start_trigger_key > 0 && code == v_config.start_trigger_key && !video_started[i]) {
-                    std::cout << "[Core] Key trigger: Starting video " << i << "\n";
-                    decoder->load_playlist(v_config.playlists);
-                    video_started[i] = true;
+                // Start trigger (Toggle)
+                if (v_config.start_trigger_key > 0 && code == v_config.start_trigger_key) {
+                    if (!video_started[i]) {
+                        std::cout << "[Core] Key trigger: Starting video " << i << "\n";
+                        decoder->load_playlist(v_config.playlists);
+                        video_started[i] = true;
+                    } else {
+                        std::cout << "[Core] Key trigger: Unloading video " << i << "\n";
+                        decoder->unload();
+                        video_started[i] = false;
+                    }
                 }
 
                 // Navigation keys
