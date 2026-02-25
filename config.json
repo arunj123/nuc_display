@@ -116,5 +116,12 @@
             "src_w": 1.0,
             "src_h": 1.0
         }
-    ]
+    ],
+    "news": {
+        "enabled": true,
+        "sources": [
+            "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
+            "http://feeds.bbci.co.uk/news/rss.xml"
+        ]
+    }
 }
