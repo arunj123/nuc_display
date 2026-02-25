@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <curl/curl.h>
 
 #include "core/display_manager.hpp"
 #include "core/renderer.hpp"
@@ -39,6 +40,7 @@ void sigusr1_handler(int) {
 }
 
 int main() {
+    curl_global_init(CURL_GLOBAL_ALL);
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGTERM, sigint_handler);
     std::signal(SIGUSR1, sigusr1_handler);
@@ -494,5 +496,6 @@ int main() {
     }
 
     std::cout << "\n[Core] Shutting down gracefully...\n";
+    curl_global_cleanup();
     return 0;
 }

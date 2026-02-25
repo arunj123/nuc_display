@@ -15,21 +15,10 @@
 namespace nuc_display::modules {
 
 StockModule::StockModule() {
-    curl_global_init(CURL_GLOBAL_ALL);
 }
 
 StockModule::~StockModule() {
-    curl_global_cleanup();
-    // Texture cleanup
-    /*
-    for (auto const& [symbol, tex_id] : icon_textures_) {
-        // We need a way to delete textures. Assuming renderer is not here, 
-        // but textures are created on the main thread during render.
-        // Actually, we'll let the user know we should probably have a cleanup method 
-        // or just accept that they live for the app duration.
-        // However, we can't easily call renderer.delete_texture(tex_id) here without a renderer ref.
-    }
-    */
+    // Textures live for the app duration — no renderer ref available here
 }
 
 void StockModule::add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol) {
@@ -385,11 +374,11 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     current_y += 0.14f;
 
     // 2. Draw Price (Massive)
-    std::stringstream price_ss;
-    price_ss << std::fixed << std::setprecision(2) << data.currency_symbol << data.current_price;
+    char price_buf[32];
+    snprintf(price_buf, sizeof(price_buf), "%s%.2f", data.currency_symbol.c_str(), data.current_price);
     text_renderer.set_pixel_size(0, 160);
     float price_w = 0.0f;
-    if (auto glyphs = text_renderer.shape_text(price_ss.str())) {
+    if (auto glyphs = text_renderer.shape_text(price_buf)) {
         for (const auto& g : glyphs.value()) price_w += g.advance / (float)renderer.width();
         renderer.draw_text(glyphs.value(), base_x, current_y, 1.0f, 1.0f, 1.0f, 1.0f, alpha);
     }
@@ -397,8 +386,8 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     // 3. Draw Interpolated Change % and Timeframe Label (Placed cleanly to the right of the price)
     float current_change = prev_chart.change_percent * (1.0f - morph_ease) + active_chart.change_percent * morph_ease;
     
-    std::stringstream change_ss;
-    change_ss << std::fixed << std::setprecision(2) << (current_change >= 0 ? "+" : "") << current_change << "%";
+    char change_buf[32];
+    snprintf(change_buf, sizeof(change_buf), "%s%.2f%%", current_change >= 0 ? "+" : "", current_change);
     text_renderer.set_pixel_size(0, 64);
     
     float r = current_change >= 0 ? 0.2f : 1.0f;
@@ -406,7 +395,7 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     float b = 0.3f; // nice red/green
     
     float change_x = base_x + price_w + 0.04f;
-    if (auto glyphs = text_renderer.shape_text(change_ss.str())) {
+    if (auto glyphs = text_renderer.shape_text(change_buf)) {
         renderer.draw_text(glyphs.value(), change_x, current_y - 0.04f, 1.0f, r, g, b, alpha);
     }
     
@@ -423,62 +412,52 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
 
     // 4. Draw Interpolated Massive Sparkline and Scales
     if (active_chart.prices.size() > 2 && prev_chart.prices.size() == active_chart.prices.size()) {
-        float chart_w = 0.50f; // Use almost all remaining width
-        float chart_h = 0.40f; // Use bottom half
-        
-        std::vector<float> interp_prices(active_chart.prices.size());
-        for (size_t i = 0; i < active_chart.prices.size(); i++) {
-            float p_prev = prev_chart.prices[i];
-            float p_curr = active_chart.prices[i];
-            interp_prices[i] = p_prev * (1.0f - morph_ease) + p_curr * morph_ease;
+        float chart_w = 0.50f;
+        float chart_h = 0.40f;
+
+        // Stack-allocated arrays instead of heap vectors (max 200 data points)
+        constexpr size_t MAX_CHART = 200;
+        size_t n = std::min(active_chart.prices.size(), MAX_CHART);
+        float interp_prices[MAX_CHART];
+        for (size_t i = 0; i < n; i++) {
+            interp_prices[i] = prev_chart.prices[i] * (1.0f - morph_ease) + active_chart.prices[i] * morph_ease;
         }
         
-        // Find min/max for scaling of the interpolated array
         float min_p = interp_prices[0], max_p = interp_prices[0];
-        for (float p : interp_prices) {
-             if (p < min_p) min_p = p;
-             if (p > max_p) max_p = p;
+        for (size_t i = 1; i < n; i++) {
+             if (interp_prices[i] < min_p) min_p = interp_prices[i];
+             if (interp_prices[i] > max_p) max_p = interp_prices[i];
         }
 
-        // Slight padding
         float pad = (max_p - min_p) * 0.1f;
-        if (pad < 0.01f) pad = 1.0f; // avoid div/0
+        if (pad < 0.01f) pad = 1.0f;
         min_p -= pad; max_p += pad;
 
-        std::vector<float> points;
-        points.reserve(interp_prices.size() * 2);
-
-        for (size_t i = 0; i < interp_prices.size(); i++) {
-            float px = base_x + ((float)i / (interp_prices.size() - 1)) * chart_w;
-            float py = current_y + chart_h - ((interp_prices[i] - min_p) / (max_p - min_p)) * chart_h;
-            points.push_back(px);
-            points.push_back(py);
+        float points[MAX_CHART * 2];
+        for (size_t i = 0; i < n; i++) {
+            points[i * 2]     = base_x + ((float)i / (n - 1)) * chart_w;
+            points[i * 2 + 1] = current_y + chart_h - ((interp_prices[i] - min_p) / (max_p - min_p)) * chart_h;
         }
 
-        // Draw line with green/red tint representing trend
-        renderer.draw_line_strip(points, r, g, b, alpha, 5.0f); // Slightly thicker line
+        // draw_line_strip expects std::vector, wrap in a span-like view
+        std::vector<float> pts(points, points + n * 2);
+        renderer.draw_line_strip(pts, r, g, b, alpha, 5.0f);
 
         // Draw Scales
         text_renderer.set_pixel_size(0, 24);
         
-        // Max Scale
-        std::stringstream max_ss;
-        max_ss << std::fixed << std::setprecision(2) << max_p;
-        if (auto glyphs = text_renderer.shape_text(max_ss.str())) {
+        char max_buf[16]; snprintf(max_buf, sizeof(max_buf), "%.2f", max_p);
+        if (auto glyphs = text_renderer.shape_text(max_buf)) {
             renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
         }
 
-        // Mid Scale
-        std::stringstream mid_ss;
-        mid_ss << std::fixed << std::setprecision(2) << (min_p + (max_p - min_p) / 2.0f);
-        if (auto glyphs = text_renderer.shape_text(mid_ss.str())) {
+        char mid_buf[16]; snprintf(mid_buf, sizeof(mid_buf), "%.2f", min_p + (max_p - min_p) / 2.0f);
+        if (auto glyphs = text_renderer.shape_text(mid_buf)) {
             renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y + chart_h / 2.0f, 1.0f, 0.4f, 0.4f, 0.4f, alpha);
         }
 
-        // Min Scale
-        std::stringstream min_ss;
-        min_ss << std::fixed << std::setprecision(2) << min_p;
-        if (auto glyphs = text_renderer.shape_text(min_ss.str())) {
+        char min_buf[16]; snprintf(min_buf, sizeof(min_buf), "%.2f", min_p);
+        if (auto glyphs = text_renderer.shape_text(min_buf)) {
             renderer.draw_text(glyphs.value(), base_x + chart_w + 0.01f, current_y + chart_h - 0.02f, 1.0f, 0.6f, 0.6f, 0.6f, alpha);
         }
 

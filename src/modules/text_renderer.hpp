@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <unordered_map>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb.h>
@@ -33,6 +34,7 @@ private:
     FT_Library ft_library_ = nullptr;
     FT_Face ft_face_ = nullptr;
     hb_font_t* hb_font_ = nullptr;
+    hb_buffer_t* hb_buffer_ = nullptr;  // Persistent, reused via hb_buffer_reset()
     
     struct CachedGlyph {
         unsigned int texture_id;
@@ -40,11 +42,12 @@ private:
         int bearing_x, bearing_y;
         long advance;
     };
-    std::vector<CachedGlyph> glyph_cache_; // Simple indexed cache for ASCII/common chars or a map
-    // For now we'll use a map or simple logic
-    std::vector<GlyphData> cached_glyphs_;
+    // Key = (pixel_height << 32) | glyph_id — glyphs at different sizes coexist
+    std::unordered_map<uint64_t, CachedGlyph> glyph_cache_;
+    
     uint32_t current_width_ = 0;
     uint32_t current_height_ = 0;
 };
 
 } // namespace nuc_display::modules
+

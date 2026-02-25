@@ -57,6 +57,7 @@ private:
     GLuint sampler_loc_;
     GLuint matrix_loc_;
     GLuint color_loc_;
+    GLuint type_loc_;
     
     // Weather Shader
     GLuint weather_program_;

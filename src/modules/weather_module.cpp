@@ -163,18 +163,18 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     struct tm *parts = std::localtime(&now_c);
 
     // Time (left)
-    std::stringstream time_ss;
-    time_ss << std::put_time(parts, "%H:%M");
+    char time_buf[8];
+    snprintf(time_buf, sizeof(time_buf), "%02d:%02d", parts->tm_hour, parts->tm_min);
     text_renderer.set_pixel_size(0, 95);
-    if (auto glyphs = text_renderer.shape_text(time_ss.str())) {
+    if (auto glyphs = text_renderer.shape_text(time_buf)) {
         renderer.draw_text(glyphs.value(), lx, 0.11f, 1.0f);
     }
 
     // Temperature (right-aligned in left column)
-    std::stringstream temp_ss;
-    temp_ss << std::fixed << std::setprecision(1) << data.temperature << "\xC2\xB0" << "C";
+    char temp_buf[16];
+    snprintf(temp_buf, sizeof(temp_buf), "%.1f\xC2\xB0" "C", data.temperature);
     float temp_w = 0.0f;
-    if (auto glyphs = text_renderer.shape_text(temp_ss.str())) {
+    if (auto glyphs = text_renderer.shape_text(temp_buf)) {
         for (const auto& g : glyphs.value()) temp_w += g.advance / (float)renderer.width();
         float temp_x = left_col_right - temp_w - 0.02f;
         renderer.draw_text(glyphs.value(), temp_x, 0.11f, 1.0f);
@@ -183,10 +183,13 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     // =========================================================
     // ROW 2: Date & City (centered)    (y = 0.13 - 0.18)
     // =========================================================
-    std::stringstream date_ss;
-    date_ss << std::put_time(parts, "%a, %b %d") << " | " << data.city;
+    char date_buf[64];
+    char day_abbr[4], month_abbr[4];
+    strftime(day_abbr, sizeof(day_abbr), "%a", parts);
+    strftime(month_abbr, sizeof(month_abbr), "%b", parts);
+    snprintf(date_buf, sizeof(date_buf), "%s, %s %d | %s", day_abbr, month_abbr, parts->tm_mday, data.city.c_str());
     text_renderer.set_pixel_size(0, 24);
-    if (auto glyphs = text_renderer.shape_text(date_ss.str())) {
+    if (auto glyphs = text_renderer.shape_text(date_buf)) {
         float date_w = 0.0f;
         for (const auto& g : glyphs.value()) date_w += g.advance / (float)renderer.width();
         float date_x = lx + (left_w - date_w) / 2.0f;
@@ -238,9 +241,9 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     }
     // 2. High UV Index Warning
     else if (data.uv_index >= 6.0f) {
-        std::stringstream uv_warn;
-        uv_warn << "WARNING: High UV Index (" << std::fixed << std::setprecision(1) << data.uv_index << ")!";
-        if (auto glyphs = text_renderer.shape_text(uv_warn.str())) {
+        char uv_warn[64];
+        snprintf(uv_warn, sizeof(uv_warn), "WARNING: High UV Index (%.1f)!", data.uv_index);
+        if (auto glyphs = text_renderer.shape_text(uv_warn)) {
             renderer.draw_text(glyphs.value(), lx, text_y, 1.0f, 1.0f, 0.6f, 0.2f, 1.0f); // Orange
             text_y += 0.030f;
         }
@@ -284,36 +287,37 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     float col_2_x = lx + 0.20f;
 
     // Row 1: Wind & Humidity
-    std::stringstream wind_ss; wind_ss << "Wind: " << std::fixed << std::setprecision(1) << data.wind_speed << " km/h";
-    if (auto glyphs = text_renderer.shape_text(wind_ss.str())) {
+    char wind_buf[32]; snprintf(wind_buf, sizeof(wind_buf), "Wind: %.1f km/h", data.wind_speed);
+    if (auto glyphs = text_renderer.shape_text(wind_buf)) {
         renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
-    std::stringstream hum_ss; hum_ss << "Humidity: " << (int)data.humidity << "%";
-    if (auto glyphs = text_renderer.shape_text(hum_ss.str())) {
+    char hum_buf[32]; snprintf(hum_buf, sizeof(hum_buf), "Humidity: %d%%", (int)data.humidity);
+    if (auto glyphs = text_renderer.shape_text(hum_buf)) {
         renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
     text_y += 0.03f;
 
     // Row 2: Visibility & Feels Like
-    std::stringstream vis_ss; vis_ss << "Vis: " << std::fixed << std::setprecision(1) << (data.visibility / 1000.0f) << " km";
-    if (auto glyphs = text_renderer.shape_text(vis_ss.str())) {
+    char vis_buf[32]; snprintf(vis_buf, sizeof(vis_buf), "Vis: %.1f km", data.visibility / 1000.0f);
+    if (auto glyphs = text_renderer.shape_text(vis_buf)) {
         renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
-    std::stringstream app_ss; app_ss << "Feels: " << std::fixed << std::setprecision(1) << data.feels_like << "\xC2\xB0" << "C";
-    if (auto glyphs = text_renderer.shape_text(app_ss.str())) {
+    char app_buf[32]; snprintf(app_buf, sizeof(app_buf), "Feels: %.1f\xC2\xB0" "C", data.feels_like);
+    if (auto glyphs = text_renderer.shape_text(app_buf)) {
         renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
     text_y += 0.03f;
     
     // Row 3: UV Index & Sunrise/Sunset
-    std::stringstream uv_ss; uv_ss << "UV Index: " << std::fixed << std::setprecision(1) << data.uv_index;
-    if (auto glyphs = text_renderer.shape_text(uv_ss.str())) {
+    char uv_buf[32]; snprintf(uv_buf, sizeof(uv_buf), "UV Index: %.1f", data.uv_index);
+    if (auto glyphs = text_renderer.shape_text(uv_buf)) {
         renderer.draw_text(glyphs.value(), col_1_x, text_y, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);
     }
-    std::stringstream sun_ss;
-    sun_ss << "Rise " << (data.sunrise.empty() ? "--:--" : data.sunrise) 
-           << " | Set " << (data.sunset.empty() ? "--:--" : data.sunset);
-    if (auto glyphs = text_renderer.shape_text(sun_ss.str())) {
+    char sun_buf[64];
+    snprintf(sun_buf, sizeof(sun_buf), "Rise %s | Set %s",
+             data.sunrise.empty() ? "--:--" : data.sunrise.c_str(),
+             data.sunset.empty() ? "--:--" : data.sunset.c_str());
+    if (auto glyphs = text_renderer.shape_text(sun_buf)) {
         renderer.draw_text(glyphs.value(), col_2_x, text_y, 1.0f, 0.9f, 0.7f, 0.3f, 1.0f);
     }
 }

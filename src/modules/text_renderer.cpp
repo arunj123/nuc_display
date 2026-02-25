@@ -11,6 +11,9 @@ TextRenderer::TextRenderer() {
 
 TextRenderer::~TextRenderer() {
     this->clear_cache();
+    if (this->hb_buffer_) {
+        hb_buffer_destroy(this->hb_buffer_);
+    }
     if (this->hb_font_) {
         hb_font_destroy(this->hb_font_);
     }
@@ -23,7 +26,7 @@ TextRenderer::~TextRenderer() {
 }
 
 void TextRenderer::clear_cache() {
-    for (auto& glyph : glyph_cache_) {
+    for (auto& [key, glyph] : glyph_cache_) {
         if (glyph.texture_id) {
             glDeleteTextures(1, &glyph.texture_id);
         }
@@ -47,6 +50,13 @@ std::expected<void, MediaError> TextRenderer::load(const std::string& font_filep
         return std::unexpected(MediaError::InternalError);
     }
 
+    // Create persistent HarfBuzz buffer (reused via hb_buffer_reset)
+    this->hb_buffer_ = hb_buffer_create();
+    if (!this->hb_buffer_ || !hb_buffer_allocation_successful(this->hb_buffer_)) {
+        std::cerr << "HarfBuzz: Failed to create buffer\n";
+        return std::unexpected(MediaError::InternalError);
+    }
+
     std::cout << "Successfully loaded font: " << font_filepath << "\n";
     return {};
 }
@@ -60,7 +70,7 @@ std::expected<void, MediaError> TextRenderer::set_pixel_size(uint32_t width, uin
         return std::unexpected(MediaError::InternalError);
     }
 
-    this->clear_cache(); 
+    // No cache clear! Size-keyed cache retains all previously rendered glyphs.
     hb_ft_font_changed(this->hb_font_);
     current_width_ = width;
     current_height_ = height;
@@ -68,33 +78,31 @@ std::expected<void, MediaError> TextRenderer::set_pixel_size(uint32_t width, uin
 }
 
 std::expected<std::vector<GlyphData>, MediaError> TextRenderer::shape_text(const std::string& utf8_text) {
-    if (!this->hb_font_) return std::unexpected(MediaError::InternalError);
+    if (!this->hb_font_ || !this->hb_buffer_) return std::unexpected(MediaError::InternalError);
 
-    hb_buffer_t* hb_buffer = hb_buffer_create();
-    hb_buffer_add_utf8(hb_buffer, utf8_text.c_str(), -1, 0, -1);
-    hb_buffer_guess_segment_properties(hb_buffer);
+    // Reuse persistent buffer
+    hb_buffer_reset(this->hb_buffer_);
+    hb_buffer_add_utf8(this->hb_buffer_, utf8_text.c_str(), -1, 0, -1);
+    hb_buffer_guess_segment_properties(this->hb_buffer_);
 
-    hb_shape(this->hb_font_, hb_buffer, nullptr, 0);
+    hb_shape(this->hb_font_, this->hb_buffer_, nullptr, 0);
 
     unsigned int glyph_count;
-    hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(hb_buffer, &glyph_count);
-    hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(hb_buffer, &glyph_count);
+    hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(this->hb_buffer_, &glyph_count);
+    hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(this->hb_buffer_, &glyph_count);
 
     std::vector<GlyphData> layout;
     layout.reserve(glyph_count);
 
-    // Ensure cache is big enough or use a more efficient map
-    // For simplicity, we'll cache by codepoint (HarfBuzz codepoints are often GID)
-    
+    // Cache key: (pixel_height << 32) | glyph_id
+    uint64_t size_key = static_cast<uint64_t>(current_height_) << 32;
+
     for (unsigned int i = 0; i < glyph_count; i++) {
         uint32_t gid = glyph_info[i].codepoint;
+        uint64_t cache_key = size_key | gid;
         
-        // Linear search or resize-based cache
-        if (gid >= glyph_cache_.size()) {
-            glyph_cache_.resize(gid + 1, {0, 0, 0, 0, 0, 0});
-        }
-        
-        if (glyph_cache_[gid].texture_id == 0) {
+        auto it = glyph_cache_.find(cache_key);
+        if (it == glyph_cache_.end()) {
             // Load and render glyph
             if (FT_Load_Glyph(ft_face_, gid, FT_LOAD_RENDER)) continue;
             
@@ -102,7 +110,6 @@ std::expected<std::vector<GlyphData>, MediaError> TextRenderer::shape_text(const
             glGenTextures(1, &tex);
             glBindTexture(GL_TEXTURE_2D, tex);
             
-            // WebGL/GLES2 doesn't support GL_RED necessarily, use GL_LUMINANCE for monochrome
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 
                          ft_face_->glyph->bitmap.width, 
@@ -115,7 +122,7 @@ std::expected<std::vector<GlyphData>, MediaError> TextRenderer::shape_text(const
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             
-            glyph_cache_[gid] = {
+            CachedGlyph cached = {
                 .texture_id = tex,
                 .width     = (int)ft_face_->glyph->bitmap.width,
                 .height    = (int)ft_face_->glyph->bitmap.rows,
@@ -123,9 +130,10 @@ std::expected<std::vector<GlyphData>, MediaError> TextRenderer::shape_text(const
                 .bearing_y = ft_face_->glyph->bitmap_top,
                 .advance   = ft_face_->glyph->advance.x
             };
+            it = glyph_cache_.emplace(cache_key, cached).first;
         }
 
-        auto& cached = glyph_cache_[gid];
+        auto& cached = it->second;
         layout.push_back({
             .codepoint = gid,
             .x_offset  = glyph_pos[i].x_offset / 64.0f,
@@ -139,7 +147,6 @@ std::expected<std::vector<GlyphData>, MediaError> TextRenderer::shape_text(const
         });
     }
 
-    hb_buffer_destroy(hb_buffer);
     return layout;
 }
 

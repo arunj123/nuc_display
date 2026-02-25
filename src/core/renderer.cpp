@@ -246,6 +246,7 @@ void Renderer::init(int width, int height) {
     sampler_loc_ = glGetUniformLocation(program_, "s_texture");
     matrix_loc_ = glGetUniformLocation(program_, "u_matrix");
     color_loc_  = glGetUniformLocation(program_, "u_color");
+    type_loc_   = glGetUniformLocation(program_, "u_type");
 
     // Weather Shader initialization
     GLuint vs_w = compile_shader(GL_VERTEX_SHADER, vertex_shader_source);
@@ -360,7 +361,7 @@ void Renderer::draw_quad(uint32_t texture_id, float x, float y, float w, float h
 
     glUniformMatrix4fv(matrix_loc_, 1, GL_FALSE, matrix_);
     glUniform4f(color_loc_, r, g, b, a);
-    glUniform1i(glGetUniformLocation(program_, "u_type"), 0);
+    glUniform1i(type_loc_, 0);
 
     glVertexAttribPointer(position_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(position_loc_);
@@ -376,22 +377,38 @@ void Renderer::draw_quad(uint32_t texture_id, float x, float y, float w, float h
 }
 
 void Renderer::draw_text(const std::vector<modules::GlyphData>& glyphs, float start_x, float start_y, float scale, float r, float g, float b, float a) {
+    if (glyphs.empty()) return;
+
     glUseProgram(program_);
-    glUniform1i(glGetUniformLocation(program_, "u_type"), 1);
+    glUniform1i(type_loc_, 1);
     glUniform4f(color_loc_, r, g, b, a);
     glUniformMatrix4fv(matrix_loc_, 1, GL_FALSE, matrix_);
+    glUniform1i(sampler_loc_, 0);
+    glActiveTexture(GL_TEXTURE0);
 
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glVertexAttribPointer(position_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(position_loc_);
+    glVertexAttribPointer(tex_coord_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(tex_coord_loc_);
+
+    // Batch: group consecutive glyphs sharing the same texture into a single draw call.
+    // Most text uses one texture per glyph, so we issue one draw per glyph but with
+    // minimal state changes (uniforms/attribs set once above, only texture bind changes).
     float x = start_x;
+    GLuint last_tex = 0;
+
     for (const auto& glyph : glyphs) {
-        if (glyph.texture_id == 0) continue;
+        if (glyph.texture_id == 0) {
+            x += glyph.advance / (float)width_ * scale;
+            continue;
+        }
 
         float w = (float)glyph.width / width_ * scale;
         float h = (float)glyph.height / height_ * scale;
-        
         float xpos = x + (float)glyph.bearing_x / width_ * scale;
         float ypos = start_y - (float)glyph.bearing_y / height_ * scale;
 
-        // Custom quad draw for text to avoid changing uniforms constantly
         float vertices[] = {
             xpos,     ypos,     0.0f, 0.0f,
             xpos + w, ypos,     1.0f, 0.0f,
@@ -399,46 +416,42 @@ void Renderer::draw_text(const std::vector<modules::GlyphData>& glyphs, float st
             xpos + w, ypos + h, 1.0f, 1.0f,
         };
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+        // Only bind texture if it changed
+        if (glyph.texture_id != last_tex) {
+            glBindTexture(GL_TEXTURE_2D, glyph.texture_id);
+            last_tex = glyph.texture_id;
+        }
+
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-
-        glVertexAttribPointer(position_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(position_loc_);
-
-        glVertexAttribPointer(tex_coord_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-        glEnableVertexAttribArray(tex_coord_loc_);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, glyph.texture_id);
-        glUniform1i(sampler_loc_, 0);
-
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-        x += (float)glyph.advance / width_ * scale;
+        x += glyph.advance / (float)width_ * scale;
     }
 }
 
 void Renderer::draw_line_strip(const std::vector<float>& points, float r, float g, float b, float a, float line_width) {
-    if (points.size() < 4) return; // Need at least two x,y pairs
+    if (points.size() < 4) return;
+    size_t num_points = points.size() / 2;
+    // Stack-alloc interleaved vertices (max 512 points = 2048 floats, ~8KB on stack)
+    constexpr size_t MAX_POINTS = 512;
+    if (num_points > MAX_POINTS) num_points = MAX_POINTS;
+    float vertices[MAX_POINTS * 4];
+    for (size_t i = 0; i < num_points; ++i) {
+        vertices[i * 4 + 0] = points[i * 2];
+        vertices[i * 4 + 1] = points[i * 2 + 1];
+        vertices[i * 4 + 2] = 0.0f;
+        vertices[i * 4 + 3] = 0.0f;
+    }
 
     glUseProgram(program_);
     glLineWidth(line_width);
 
-    std::vector<float> vertices;
-    vertices.reserve(points.size() * 2);
-    for (size_t i = 0; i < points.size(); i += 2) {
-        vertices.push_back(points[i]);
-        vertices.push_back(points[i+1]);
-        vertices.push_back(0.0f); // Default texCoord
-        vertices.push_back(0.0f);
-    }
-
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, num_points * 4 * sizeof(float), vertices, GL_DYNAMIC_DRAW);
 
     glUniformMatrix4fv(matrix_loc_, 1, GL_FALSE, matrix_);
     glUniform4f(color_loc_, r, g, b, a);
-    glUniform1i(glGetUniformLocation(program_, "u_type"), 0);
+    glUniform1i(type_loc_, 0);
 
     glVertexAttribPointer(position_loc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(position_loc_);
@@ -450,7 +463,7 @@ void Renderer::draw_line_strip(const std::vector<float>& points, float r, float 
     glBindTexture(GL_TEXTURE_2D, white_texture_);
     glUniform1i(sampler_loc_, 0);
 
-    glDrawArrays(GL_LINE_STRIP, 0, points.size() / 2);
+    glDrawArrays(GL_LINE_STRIP, 0, num_points);
 }
 
 GLuint Renderer::compile_shader(GLenum type, const char* source) {
