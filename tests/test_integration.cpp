@@ -368,7 +368,25 @@ static void scenario_hide_show(UinputInjector& inj) {
     }
 }
 
-// Scenario 5: Stress — rapid random keys
+// Scenario 5: Video Play/Stop Toggle
+static void scenario_video_toggle(UinputInjector& inj) {
+    std::cout << "[Scenario] Video Play/Stop toggle...\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    
+    // 1. Play Video
+    inj.press_key(KEY_S);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    
+    // 2. Stop Video (Unload completely)
+    inj.press_key(KEY_S);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    
+    // 3. Play Video Again (From beginning)
+    inj.press_key(KEY_S);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+}
+
+// Scenario 6: Stress — rapid random keys
 static void scenario_rapid_keys(UinputInjector& inj) {
     std::cout << "[Scenario] Stress: 50 rapid key presses...\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -382,12 +400,13 @@ static void scenario_rapid_keys(UinputInjector& inj) {
     int num_keys = sizeof(keys) / sizeof(keys[0]);
     
     for (int i = 0; i < 50; ++i) {
+        // KEY_S in this random array will continuously toggle play/stop on the video pipeline!
         inj.press_key(keys[i % num_keys]);
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
     }
 }
 
-// Scenario 6: Clean shutdown during active rendering
+// Scenario 7: Clean shutdown during active rendering
 static void scenario_clean_shutdown(UinputInjector& inj) {
     std::cout << "[Scenario] Clean shutdown: start everything, then SIGINT...\n";
     
@@ -472,8 +491,9 @@ int main(int argc, char** argv) {
         {"2. Stock Navigation",    scenario_stock_navigation, 10},
         {"3. Video Lifecycle",     scenario_video_lifecycle,  12},
         {"4. Hide/Show Toggle",    scenario_hide_show,        10},
-        {"5. Rapid Key Stress",    scenario_rapid_keys,       8},
-        {"6. Clean Shutdown",      scenario_clean_shutdown,   6},
+        {"5. Video Play/Stop",     scenario_video_toggle,     10},
+        {"6. Rapid Key Stress",    scenario_rapid_keys,       8},
+        {"7. Clean Shutdown",      scenario_clean_shutdown,   6},
     };
 
     // Run scenarios
