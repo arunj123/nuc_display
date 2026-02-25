@@ -26,6 +26,8 @@ public:
     void render(core::Renderer& renderer, TextRenderer& text_renderer, 
                 float x, float y, float w, float h, double time_sec);
 
+    bool is_empty() const;
+
 private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
     

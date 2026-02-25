@@ -486,4 +486,8 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     }
 }
 
+bool StockModule::is_empty() const {
+    return stock_data_.empty();
+}
+
 } // namespace nuc_display::modules

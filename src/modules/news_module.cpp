@@ -251,4 +251,9 @@ void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
     glDisable(GL_SCISSOR_TEST);
 }
 
+bool NewsModule::is_empty() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return headlines_.empty();
+}
+
 } // namespace nuc_display::modules

@@ -279,8 +279,13 @@ int main() {
             }
         }
 
-        // --- CHECK STOCK UPDATES (Every 5 mins) ---
-        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_stock_update).count() >= 5) {
+        // --- CHECK STOCK UPDATES (Every 5 mins, or 30s if failed) ---
+        bool stocks_empty = stock_module->is_empty();
+        int stock_retry_min = stocks_empty ? 0 : 5;
+        int stock_retry_sec = stocks_empty ? 30 : 0;
+        
+        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_stock_update).count() >= stock_retry_min &&
+            std::chrono::duration_cast<std::chrono::seconds>(now - last_stock_update).count() >= stock_retry_sec) {
             stock_task = thread_pool.enqueue([&stock_module]() {
                 stock_module->update_all_data();
             });
@@ -291,15 +296,20 @@ int main() {
             try {
                 stock_task.get();
                 stock_online = true;
-                std::cout << "[Stock] Data Updated.\n";
+                // std::cout << "[Stock] Data Updated.\n";
             } catch (...) {
                 stock_online = false;
                 std::cerr << "[Stock] Update failed\n";
             }
         }
 
-        // --- CHECK NEWS UPDATES (Every 15 mins) ---
-        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_news_update).count() >= 15) {
+        // --- CHECK NEWS UPDATES (Every 15 mins, or 60s if failed) ---
+        bool news_empty = news_module->is_empty();
+        int news_retry_min = news_empty ? 0 : 15;
+        int news_retry_sec = news_empty ? 60 : 0;
+
+        if (std::chrono::duration_cast<std::chrono::minutes>(now - last_news_update).count() >= news_retry_min &&
+            std::chrono::duration_cast<std::chrono::seconds>(now - last_news_update).count() >= news_retry_sec) {
             news_task = thread_pool.enqueue([&news_module]() {
                 news_module->update_headlines();
             });
