@@ -239,6 +239,20 @@ int main() {
                     decoder->skip_backward(2.0);
                 }
             }
+
+            // Stock navigation keys
+            if (app_config.stock_keys.next_stock && code == *app_config.stock_keys.next_stock) {
+                stock_module->next_stock();
+            }
+            if (app_config.stock_keys.prev_stock && code == *app_config.stock_keys.prev_stock) {
+                stock_module->prev_stock();
+            }
+            if (app_config.stock_keys.next_chart && code == *app_config.stock_keys.next_chart) {
+                stock_module->next_chart();
+            }
+            if (app_config.stock_keys.prev_chart && code == *app_config.stock_keys.prev_chart) {
+                stock_module->prev_chart();
+            }
         }
         
         auto now_p = std::chrono::steady_clock::now();

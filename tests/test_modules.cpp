@@ -234,3 +234,74 @@ TEST(ConfigValidatorTest, OutOfRangeCoordinates) {
     ASSERT_EQ(errors.size(), 1);
     EXPECT_NE(errors[0].find("out of range"), std::string::npos);
 }
+
+// --- Stock Key Binding Tests ---
+
+TEST_F(ConfigModuleTest, ParseStockKeys) {
+    nlohmann::json j = {
+        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", {{{"symbol", "AAPL"}, {"name", "Apple"}, {"currency_symbol", "$"}}}},
+        {"stock_keys", {
+            {"next_stock", "dot"},
+            {"prev_stock", "comma"},
+            {"next_chart", "equal"},
+            {"prev_chart", "minus"}
+        }},
+        {"videos", nlohmann::json::array()}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->stock_keys.next_stock.has_value());
+    EXPECT_TRUE(result->stock_keys.prev_stock.has_value());
+    EXPECT_TRUE(result->stock_keys.next_chart.has_value());
+    EXPECT_TRUE(result->stock_keys.prev_chart.has_value());
+    // All four keys should be distinct
+    EXPECT_NE(*result->stock_keys.next_stock, *result->stock_keys.prev_stock);
+    EXPECT_NE(*result->stock_keys.next_chart, *result->stock_keys.prev_chart);
+}
+
+TEST(ConfigValidatorTest, StockKeyDuplicateWithGlobal) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.global_keys.hide_videos = 47; // KEY_V
+    config.stock_keys.next_stock = 47;   // Duplicate with global!
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("Duplicate key binding"), std::string::npos);
+}
+
+TEST(ConfigValidatorTest, StockKeyDuplicateAmongStockKeys) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.stock_keys.next_stock = 52;  // KEY_DOT
+    config.stock_keys.prev_stock = 52;  // Same as next_stock!
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("Duplicate key binding"), std::string::npos);
+}
+
+TEST(StockModuleTest, ManualCyclingLogic) {
+    StockModule module;
+    // Add 3 stocks
+    module.add_symbol("AAPL", "Apple", "$");
+    module.add_symbol("GOOG", "Alphabet", "$");
+    module.add_symbol("MSFT", "Microsoft", "$");
+
+    // next_stock / prev_stock should not crash even with no data
+    module.next_stock();
+    module.prev_stock();
+    module.next_chart();
+    module.prev_chart();
+
+    // Test passes if no crash — cycling on empty data is gracefully handled
+    SUCCEED();
+}

@@ -1,11 +1,17 @@
 {
     "location": {
-        "address": "Hasenbuk, Nürnberg, Germany",
+        "address": "Nürnberg, Germany",
         "lat": 49.42,
         "lon": 11.08
     },
     "global_keys": {
         "hide_videos": "v"
+    },
+    "stock_keys": {
+        "next_stock": "dot",
+        "prev_stock": "comma",
+        "next_chart": "equal",
+        "prev_chart": "minus"
     },
     "stocks": [
         {
@@ -32,6 +38,11 @@
             "currency_symbol": "€",
             "name": "Tesla",
             "symbol": "TL0.F"
+        },
+        {
+            "currency_symbol": "€",
+            "name": "Microsoft",
+            "symbol": "MSF.F"
         }
     ],
     "videos": [

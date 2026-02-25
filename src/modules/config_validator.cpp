@@ -34,6 +34,12 @@ std::vector<std::string> ConfigValidator::validate(const AppConfig& config) {
         check_key(*config.global_keys.hide_videos, "global_keys.hide_videos");
     }
 
+    // Stock keys
+    if (config.stock_keys.next_stock) check_key(*config.stock_keys.next_stock, "stock_keys.next_stock");
+    if (config.stock_keys.prev_stock) check_key(*config.stock_keys.prev_stock, "stock_keys.prev_stock");
+    if (config.stock_keys.next_chart) check_key(*config.stock_keys.next_chart, "stock_keys.next_chart");
+    if (config.stock_keys.prev_chart) check_key(*config.stock_keys.prev_chart, "stock_keys.prev_chart");
+
     // 4. Per-video validation
     for (size_t i = 0; i < config.videos.size(); ++i) {
         const auto& v = config.videos[i];

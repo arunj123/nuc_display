@@ -27,6 +27,13 @@ struct GlobalKeysConfig {
     std::optional<uint16_t> hide_videos;
 };
 
+struct StockKeysConfig {
+    std::optional<uint16_t> next_stock;
+    std::optional<uint16_t> prev_stock;
+    std::optional<uint16_t> next_chart;
+    std::optional<uint16_t> prev_chart;
+};
+
 struct VideoKeysConfig {
     std::optional<uint16_t> next;
     std::optional<uint16_t> prev;
@@ -55,6 +62,7 @@ struct AppConfig {
     std::vector<StockConfig> stocks;
     std::vector<VideoConfig> videos;
     GlobalKeysConfig global_keys;
+    StockKeysConfig stock_keys;
 };
 
 // Key name to Linux KEY_* code mapping

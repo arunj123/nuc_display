@@ -179,15 +179,21 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
         }
     }
 
-    // Sequence queries
-    // 1D
-    if (auto c1 = fetch_single_range(curl, config.symbol, "1D", "1d", "5m")) data.charts.push_back(c1.value());
-    // 5D
-    if (auto c5 = fetch_single_range(curl, config.symbol, "5D", "5d", "15m")) data.charts.push_back(c5.value());
-    // 1M
-    if (auto c1m = fetch_single_range(curl, config.symbol, "1M", "1mo", "1d")) data.charts.push_back(c1m.value());
-    // 1Y
-    if (auto c1y = fetch_single_range(curl, config.symbol, "1Y", "1y", "1d")) data.charts.push_back(c1y.value());
+    // Sequence queries — all timeframes
+    struct RangeSpec { const char* label; const char* range; const char* interval; };
+    constexpr RangeSpec ranges[] = {
+        {"1D",  "1d",  "5m"},
+        {"5D",  "5d",  "15m"},
+        {"1M",  "1mo", "1d"},
+        {"3M",  "3mo", "1wk"},
+        {"6M",  "6mo", "1wk"},
+        {"YTD", "ytd", "1d"},
+        {"1Y",  "1y",  "1d"},
+    };
+    for (const auto& r : ranges) {
+        if (auto c = fetch_single_range(curl, config.symbol, r.label, r.range, r.interval))
+            data.charts.push_back(c.value());
+    }
 
     curl_easy_cleanup(curl);
 
@@ -209,19 +215,68 @@ void StockModule::update_all_data() {
         }
     }
     // thread safe assignment
-    stock_data_ = new_data;
+    std::lock_guard<std::mutex> lock(mutex_);
+    stock_data_ = std::move(new_data);
+}
+
+void StockModule::next_stock() {
+    if (stock_data_.empty()) return;
+    manual_mode_ = true;
+    current_index_ = (current_index_ + 1) % stock_data_.size();
+    current_chart_index_ = 0;
+    last_switch_time_ = -1.0; // Force reset on next render
+    std::cout << "[Stock] Manual: next stock -> " << stock_data_[current_index_].symbol << "\n";
+}
+
+void StockModule::prev_stock() {
+    if (stock_data_.empty()) return;
+    manual_mode_ = true;
+    current_index_ = (current_index_ + stock_data_.size() - 1) % stock_data_.size();
+    current_chart_index_ = 0;
+    last_switch_time_ = -1.0;
+    std::cout << "[Stock] Manual: prev stock -> " << stock_data_[current_index_].symbol << "\n";
+}
+
+void StockModule::next_chart() {
+    if (stock_data_.empty()) return;
+    manual_mode_ = true;
+    const auto& data = stock_data_[current_index_];
+    if (!data.charts.empty()) {
+        current_chart_index_ = (current_chart_index_ + 1) % data.charts.size();
+    }
+    last_switch_time_ = -1.0;
+    std::cout << "[Stock] Manual: next chart -> " << (data.charts.empty() ? "N/A" : data.charts[current_chart_index_].label) << "\n";
+}
+
+void StockModule::prev_chart() {
+    if (stock_data_.empty()) return;
+    manual_mode_ = true;
+    const auto& data = stock_data_[current_index_];
+    if (!data.charts.empty()) {
+        current_chart_index_ = (current_chart_index_ + data.charts.size() - 1) % data.charts.size();
+    }
+    last_switch_time_ = -1.0;
+    std::cout << "[Stock] Manual: prev chart -> " << (data.charts.empty() ? "N/A" : data.charts[current_chart_index_].label) << "\n";
 }
 
 void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, double time_sec) {
     if (stock_data_.empty()) return;
 
     double display_duration_per_chart = 3.0; // 3 seconds per timeframe
-    double display_duration_per_stock = display_duration_per_chart * stock_data_[current_index_].charts.size();
+    size_t active_chart_idx;
 
-    // Switch stock entirely every 'display_duration_per_stock'
-    if (time_sec - last_switch_time_ > display_duration_per_stock) {
-        current_index_ = (current_index_ + 1) % stock_data_.size();
-        last_switch_time_ = time_sec;
+    if (manual_mode_) {
+        // Manual mode: use stored indices, reset timer on first render after key press
+        if (last_switch_time_ < 0.0) last_switch_time_ = time_sec;
+        active_chart_idx = current_chart_index_;
+    } else {
+        double display_duration_per_stock = display_duration_per_chart * stock_data_[current_index_].charts.size();
+
+        // Switch stock entirely every 'display_duration_per_stock'
+        if (time_sec - last_switch_time_ > display_duration_per_stock) {
+            current_index_ = (current_index_ + 1) % stock_data_.size();
+            last_switch_time_ = time_sec;
+        }
     }
 
     const auto& data = stock_data_[current_index_];
@@ -229,7 +284,10 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     if (data.charts.empty()) return;
 
     double local_time = time_sec - last_switch_time_;
-    size_t active_chart_idx = static_cast<size_t>(local_time / display_duration_per_chart) % data.charts.size();
+
+    if (!manual_mode_) {
+        active_chart_idx = static_cast<size_t>(local_time / display_duration_per_chart) % data.charts.size();
+    }
     
     double chart_local_time = std::fmod(local_time, display_duration_per_chart);
     

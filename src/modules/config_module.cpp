@@ -129,6 +129,14 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     }
     j["global_keys"] = gk;
 
+    // Stock keys
+    nlohmann::json sk;
+    if (config.stock_keys.next_stock) sk["next_stock"] = key_code_to_name(*config.stock_keys.next_stock);
+    if (config.stock_keys.prev_stock) sk["prev_stock"] = key_code_to_name(*config.stock_keys.prev_stock);
+    if (config.stock_keys.next_chart) sk["next_chart"] = key_code_to_name(*config.stock_keys.next_chart);
+    if (config.stock_keys.prev_chart) sk["prev_chart"] = key_code_to_name(*config.stock_keys.prev_chart);
+    if (!sk.empty()) j["stock_keys"] = sk;
+
     nlohmann::json stocks = nlohmann::json::array();
     for (const auto& s : config.stocks) {
         nlohmann::json sj;
@@ -263,6 +271,24 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                         std::cerr << "[Config] Warning: Unknown key name '" << key_name << "' for hide_videos.\n";
                     }
                 }
+            }
+
+            // Parse stock_keys
+            if (j.contains("stock_keys") && j["stock_keys"].is_object()) {
+                auto& sk = j["stock_keys"];
+                auto parse_sk = [&](const std::string& field) -> std::optional<uint16_t> {
+                    if (sk.contains(field) && sk[field].is_string()) {
+                        std::string name = sk[field];
+                        uint16_t code = key_name_to_code(name);
+                        if (code > 0) return code;
+                        std::cerr << "[Config] Warning: Unknown key name '" << name << "' for stock_keys." << field << ".\n";
+                    }
+                    return std::nullopt;
+                };
+                config.stock_keys.next_stock = parse_sk("next_stock");
+                config.stock_keys.prev_stock = parse_sk("prev_stock");
+                config.stock_keys.next_chart = parse_sk("next_chart");
+                config.stock_keys.prev_chart = parse_sk("prev_chart");
             }
 
             // Parse video key helper

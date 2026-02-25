@@ -5,6 +5,7 @@
 #include <expected>
 #include <map>
 #include <mutex>
+#include <atomic>
 
 namespace nuc_display::core { class Renderer; }
 namespace nuc_display::modules { class TextRenderer; }
@@ -49,6 +50,12 @@ public:
     // Renders right-side stock dashboard with timed animations
     void render(core::Renderer& renderer, TextRenderer& text_renderer, double time_sec);
 
+    // Manual navigation (key-driven)
+    void next_stock();
+    void prev_stock();
+    void next_chart();
+    void prev_chart();
+
 private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
     std::expected<StockData, StockError> fetch_stock(const StockConfig& config);
@@ -57,7 +64,9 @@ private:
     std::vector<StockData> stock_data_;
     
     size_t current_index_ = 0;
+    size_t current_chart_index_ = 0;
     double last_switch_time_ = 0.0;
+    std::atomic<bool> manual_mode_{false};
     
     std::map<std::string, bool> icon_attempted_;
     std::map<std::string, uint32_t> icon_textures_;

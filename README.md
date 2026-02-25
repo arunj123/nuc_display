@@ -95,6 +95,29 @@ journalctl -u nuc_display -f
 sudo systemctl restart nuc_display
 ```
 
+### Stock Navigation Keys
+Configure keyboard shortcuts to manually cycle stocks and chart timeframes in `config.json`:
+
+```json
+{
+    "stock_keys": {
+        "next_stock": "dot",
+        "prev_stock": "comma",
+        "next_chart": "equal",
+        "prev_chart": "minus"
+    }
+}
+```
+
+| Key | Action |
+| :--- | :--- |
+| `prev_stock` / `next_stock` | Cycle through configured stock symbols |
+| `prev_chart` / `next_chart` | Cycle through chart timeframes |
+
+**Available Timeframes:** 1D, 5D, 1M, 3M, 6M, YTD, 1Y
+
+The first key press switches from auto-cycling to manual mode.
+
 ### Performance Monitoring
 The engine logs hardware stats every 30 seconds:
 `[Perf] CPU: 35% | RAM: 270MB | GPU: 100/700 MHz | Temp: 48°C | Uptime: 3600s`
