@@ -343,6 +343,18 @@ std::expected<void, MediaError> VideoDecoder::load(const std::string& filepath) 
                     
                     snd_pcm_hw_params(this->pcm_handle_, params);
 
+                    // Configure Software Parameters to fix playback stalling
+                    snd_pcm_sw_params_t *sw_params;
+                    snd_pcm_sw_params_alloca(&sw_params);
+                    snd_pcm_sw_params_current(this->pcm_handle_, sw_params);
+                    
+                    // Start playback as soon as we write ANY data (we manually pre-buffer 0.2s before the first write anyway)
+                    snd_pcm_sw_params_set_start_threshold(this->pcm_handle_, sw_params, 1);
+                    // Minimum available frames to consider ALSA ready for writing
+                    snd_pcm_sw_params_set_avail_min(this->pcm_handle_, sw_params, period_size);
+                    
+                    snd_pcm_sw_params(this->pcm_handle_, sw_params);
+
                     // Initialize SwrContext for conversion to S16 interleaved Stereo
                     AVChannelLayout out_layout;
                     av_channel_layout_default(&out_layout, 2);
