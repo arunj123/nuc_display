@@ -68,6 +68,9 @@ jobs:
       run: |
         mkdir -p /home/arun/projects/nuc_display/build
         cp build_hw/nuc_display /home/arun/projects/nuc_display/build/nuc_display
+        cp config.json /home/arun/projects/nuc_display/config.json
+        cp -r assets /home/arun/projects/nuc_display/
+        cp nuc_display.service /home/arun/projects/nuc_display/nuc_display.service
 
     - name: Restart Production Service
       if: always()
