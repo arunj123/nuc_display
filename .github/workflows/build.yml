@@ -22,6 +22,7 @@ jobs:
           libva-dev libavcodec-dev libavformat-dev libswscale-dev libswresample-dev \
           libasound2-dev libfreetype6-dev libharfbuzz-dev libjpeg-dev libpng-dev \
           libcurl4-openssl-dev \
+          libnlohmann-json-dev \
           gcovr valgrind ffmpeg
 
     - name: Configure and Build
