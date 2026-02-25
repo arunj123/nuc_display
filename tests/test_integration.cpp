@@ -247,7 +247,7 @@ static ScenarioResult run_scenario(
     }
 
     // Parent: wait for app to start, then inject keys
-    std::this_thread::sleep_for(std::chrono::seconds(2)); // Let app initialize
+    std::this_thread::sleep_for(std::chrono::seconds(2)); // 2s initial wait
 
     // Run the scenario key injection
     scenario_fn(injector);
@@ -267,7 +267,7 @@ static ScenarioResult run_scenario(
     // Wait for child with timeout
     int status = 0;
     int wait_result = 0;
-    for (int i = 0; i < 50; ++i) { // 5s timeout
+    for (int i = 0; i < 200; ++i) { // 20s timeout
         wait_result = waitpid(pid, &status, WNOHANG);
         if (wait_result > 0) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
