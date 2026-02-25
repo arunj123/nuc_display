@@ -43,6 +43,8 @@ private:
     std::vector<CachedGlyph> glyph_cache_; // Simple indexed cache for ASCII/common chars or a map
     // For now we'll use a map or simple logic
     std::vector<GlyphData> cached_glyphs_;
+    uint32_t current_width_ = 0;
+    uint32_t current_height_ = 0;
 };
 
 } // namespace nuc_display::modules

@@ -54,12 +54,16 @@ std::expected<void, MediaError> TextRenderer::load(const std::string& font_filep
 std::expected<void, MediaError> TextRenderer::set_pixel_size(uint32_t width, uint32_t height) {
     if (!this->ft_face_ || !this->hb_font_) return std::unexpected(MediaError::InternalError);
 
+    if (current_width_ == width && current_height_ == height) return {};
+
     if (FT_Set_Pixel_Sizes(this->ft_face_, width, height)) {
         return std::unexpected(MediaError::InternalError);
     }
 
-    this->clear_cache(); // Ensure new sizes are rendered
+    this->clear_cache(); 
     hb_ft_font_changed(this->hb_font_);
+    current_width_ = width;
+    current_height_ = height;
     return {};
 }
 
