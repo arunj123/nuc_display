@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include "modules/image_loader.hpp"
 
 namespace nuc_display::modules {
@@ -131,53 +132,58 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
         return std::unexpected(StockError::ParseError);
     }
 
-    // --- Auto-Fetch accurate company logo via Yahoo assetProfile + Clearbit ---
-    // Only attempt if we don't already have a local logo file
+    // --- Auto-Fetch company logo via Google Favicon API ---
     std::string icon_path = "assets/stocks/" + config.symbol + ".png";
-    std::string alt_icon_path = "assets/stocks/" + config.symbol + ".jpg";
-    if (!std::filesystem::exists(icon_path) && !std::filesystem::exists(alt_icon_path)) {
-        std::string profile_readBuffer;
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &profile_readBuffer);
-        curl_easy_setopt(curl, CURLOPT_URL, ("https://query1.finance.yahoo.com/v10/finance/quoteSummary/" + config.symbol + "?modules=assetProfile").c_str());
-        
-        if (curl_easy_perform(curl) == CURLE_OK) {
-            std::string website = "";
-            try {
-                auto p_json = nlohmann::json::parse(profile_readBuffer);
-                if (p_json.contains("quoteSummary") && p_json["quoteSummary"]["result"].is_array() && !p_json["quoteSummary"]["result"].empty()) {
-                    auto profile = p_json["quoteSummary"]["result"][0]["assetProfile"];
-                    if (profile.contains("website") && profile["website"].is_string()) {
-                        std::string raw_website = profile["website"];
-                        // Basic domain extraction
-                        size_t start = raw_website.find("://");
-                        if (start != std::string::npos) raw_website = raw_website.substr(start + 3);
-                        size_t www = raw_website.find("www.");
-                        if (www == 0) raw_website = raw_website.substr(4);
-                        size_t end = raw_website.find("/");
-                        if (end != std::string::npos) raw_website = raw_website.substr(0, end);
-                        website = raw_website;
-                    }
-                }
-            } catch (...) {
-                // Ignore profile parse errors
-            }
+    if (!std::filesystem::exists(icon_path) || std::filesystem::file_size(icon_path) < 200) {
+        // Symbol-to-domain lookup for configured stocks
+        static const std::map<std::string, std::string> symbol_domains = {
+            {"^IXIC", "nasdaq.com"}, {"^GSPC", "spglobal.com"},
+            {"^NSEI", "nseindia.com"}, {"^BSESN", "bseindia.com"},
+            {"APC.F", "apple.com"}, {"MSF.F", "microsoft.com"},
+            {"NVD.F", "nvidia.com"}, {"AMZ.F", "amazon.com"},
+            {"FB2A.F", "meta.com"}, {"ABEA.F", "alphabet.com"},
+            {"TL0.F", "tesla.com"},
+            // US versions
+            {"AAPL", "apple.com"}, {"MSFT", "microsoft.com"},
+            {"NVDA", "nvidia.com"}, {"AMZN", "amazon.com"},
+            {"META", "meta.com"}, {"GOOGL", "alphabet.com"},
+            {"TSLA", "tesla.com"},
+        };
 
-            // Try Clearbit first if website is known, fallback to UI-Avatars monogram
-            std::string clean_symbol = config.symbol;
-            std::replace(clean_symbol.begin(), clean_symbol.end(), '.', '+'); // NVD.F -> NVD+F
+        auto it = symbol_domains.find(config.symbol);
+        if (it != symbol_domains.end()) {
+            std::filesystem::create_directories("assets/stocks");
+
+            std::string favicon_url = "https://www.google.com/s2/favicons?domain=" + it->second + "&sz=128";
+            std::string logo_data;
             
-            std::string cmd = "mkdir -p assets/stocks && { ";
-            if (!website.empty()) {
-                cmd += "curl -sL -m 5 'https://logo.clearbit.com/" + website + "?size=128' -o " + icon_path + " ; ";
+            CURL* logo_curl = curl_easy_init();
+            if (logo_curl) {
+                curl_easy_setopt(logo_curl, CURLOPT_URL, favicon_url.c_str());
+                curl_easy_setopt(logo_curl, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
+                curl_easy_setopt(logo_curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+                curl_easy_setopt(logo_curl, CURLOPT_WRITEDATA, &logo_data);
+                curl_easy_setopt(logo_curl, CURLOPT_FOLLOWLOCATION, 1L);
+                curl_easy_setopt(logo_curl, CURLOPT_TIMEOUT, 10L);
+                curl_easy_setopt(logo_curl, CURLOPT_SSL_VERIFYPEER, 1L);
+
+                CURLcode logo_res = curl_easy_perform(logo_curl);
+                curl_easy_cleanup(logo_curl);
+
+                if (logo_res == CURLE_OK && logo_data.size() > 200) {
+                    std::ofstream out(icon_path, std::ios::binary);
+                    if (out.is_open()) {
+                        out.write(logo_data.data(), logo_data.size());
+                        out.close();
+                        std::cout << "[Stock] Downloaded logo for " << config.symbol << " from " << it->second << "\n";
+                    }
+                } else {
+                    std::cerr << "[Stock] Logo fetch failed for " << config.symbol << " (" << it->second << ")\n";
+                }
             }
-            // Fallback: If no file exists, or the file exists but is under 2KB (Clearbit 404), fetch UI-Avatar fallback
-            cmd += "if [ ! -s " + icon_path + " ] || [ $(cat " + icon_path + " 2>/dev/null | wc -c) -lt 2048 ]; then ";
-            cmd += "curl -sL -m 5 'https://ui-avatars.com/api/?name=" + clean_symbol + "&background=random&color=fff&size=128&font-size=0.4' -o " + icon_path + " ; fi ; } >/dev/null 2>&1 &";
-            
-            int sys_res = system(cmd.c_str());
-            (void)sys_res;
         }
     }
+
 
     // Sequence queries — all timeframes
     struct RangeSpec { const char* label; const char* range; const char* interval; };
@@ -263,7 +269,7 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     if (stock_data_.empty()) return;
 
     double display_duration_per_chart = 3.0; // 3 seconds per timeframe
-    size_t active_chart_idx;
+    size_t active_chart_idx = 0;
 
     if (manual_mode_) {
         // Manual mode: use stored indices, reset timer on first render after key press

@@ -18,7 +18,7 @@ enum class ConfigError {
 };
 
 struct LocationConfig {
-    std::string address;
+    std::string name;  // Display-only label (e.g. "Hasenbuck, Nürnberg")
     float lat;
     float lon;
 };

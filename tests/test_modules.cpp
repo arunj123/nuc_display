@@ -109,7 +109,7 @@ TEST_F(ConfigModuleTest, CreateDefaultWhenFileMissing) {
 
 TEST_F(ConfigModuleTest, ParseValidConfig) {
     nlohmann::json j = {
-        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
         {"stocks", {{{"symbol", "AAPL"}, {"name", "Apple"}, {"currency_symbol", "$"}},
                     {{"symbol", "GOOG"}, {"name", "Alphabet"}, {"currency_symbol", "$"}}}},
         {"video", {
@@ -127,7 +127,7 @@ TEST_F(ConfigModuleTest, ParseValidConfig) {
     ConfigModule config;
     auto result = config.load_or_create_config(test_file_);
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->location.address, "London, UK");
+    EXPECT_EQ(result->location.name, "London");
     EXPECT_EQ(result->stocks.size(), 2);
     ASSERT_FALSE(result->videos.empty());
     EXPECT_FALSE(result->videos[0].enabled);
@@ -153,7 +153,7 @@ TEST_F(ConfigModuleTest, HandleCorruptedJson) {
 
 TEST_F(ConfigModuleTest, HandleMissingVideoNode) {
     nlohmann::json j = {
-        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
         {"stocks", nlohmann::json::array()}
     };
     std::ofstream out(test_file_);
@@ -240,7 +240,7 @@ TEST(ConfigValidatorTest, OutOfRangeCoordinates) {
 
 TEST_F(ConfigModuleTest, ParseStockKeys) {
     nlohmann::json j = {
-        {"location", {{"address", "London, UK"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
         {"stocks", {{{"symbol", "AAPL"}, {"name", "Apple"}, {"currency_symbol", "$"}}}},
         {"stock_keys", {
             {"next_stock", "dot"},

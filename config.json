@@ -1,8 +1,8 @@
 {
     "location": {
-        "address": "Nürnberg, Germany",
-        "lat": 49.42,
-        "lon": 11.08
+        "name": "Hasenbuck, Nürnberg",
+        "lat": 49.4248,
+        "lon": 11.0897
     },
     "global_keys": {
         "hide_videos": "v"

@@ -159,13 +159,8 @@ int main() {
     std::cout << "[Modules] All modular components initialized (Architecture Ready).\n";
 
     // 4. Initial Weather Fetch
-    auto weather_task = thread_pool.enqueue([&weather_module, &config_module, addr = app_config.location.address]() {
-        auto geo = config_module->geocode_address(addr);
-        if (geo) {
-            return weather_module->fetch_current_weather(geo.value().lat, geo.value().lon, geo.value().resolved_name);
-        } else {
-            return weather_module->fetch_current_weather(49.4521f, 11.0767f, "Nürnberg");
-        }
+    auto weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
+        return weather_module->fetch_current_weather(lat, lon, name);
     });
 
     auto stock_task = thread_pool.enqueue([&stock_module]() {
@@ -265,14 +260,8 @@ int main() {
         // --- CHECK WEATHER UPDATES (Every 10 mins) ---
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::minutes>(now - last_weather_update).count() >= 10) {
-            weather_task = thread_pool.enqueue([&weather_module, &config_module, addr = app_config.location.address]() {
-                // Resolve name and coordinates dynamically for accuracy
-                auto geo = config_module->geocode_address(addr);
-                if (geo) {
-                    return weather_module->fetch_current_weather(geo.value().lat, geo.value().lon, geo.value().resolved_name);
-                } else {
-                    return weather_module->fetch_current_weather(49.4521f, 11.0767f, "Nürnberg");
-                }
+            weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
+                return weather_module->fetch_current_weather(lat, lon, name);
             });
             last_weather_update = now;
         }
@@ -384,13 +373,8 @@ int main() {
             
             // Retry weather faster when offline (every 10s)
             if (std::chrono::duration_cast<std::chrono::seconds>(now - last_weather_update).count() >= 10) {
-                weather_task = thread_pool.enqueue([&weather_module, &config_module, addr = app_config.location.address]() {
-                    auto geo = config_module->geocode_address(addr);
-                    if (geo) {
-                        return weather_module->fetch_current_weather(geo.value().lat, geo.value().lon, geo.value().resolved_name);
-                    } else {
-                        return weather_module->fetch_current_weather(49.4521f, 11.0767f, "Nürnberg");
-                    }
+                weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
+                    return weather_module->fetch_current_weather(lat, lon, name);
                 });
                 last_weather_update = now;
             }

@@ -134,7 +134,7 @@ std::expected<GeocodeResult, ConfigError> ConfigModule::geocode_address(const st
 void ConfigModule::save_config(const AppConfig& config, const std::string& filepath) {
     nlohmann::json j;
     
-    j["location"]["address"] = config.location.address;
+    j["location"]["name"] = config.location.name;
     j["location"]["lat"] = config.location.lat;
     j["location"]["lon"] = config.location.lon;
 
@@ -203,16 +203,9 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
     std::ifstream in(filepath);
     if (!in.is_open()) {
         std::cout << "Config not found at " << filepath << ". Generating default config.\n";
-        config.location.address = "Hasenbuk, Nürnberg, Germany";
-        
-        auto geocode_res = geocode_address(config.location.address);
-        if (geocode_res) {
-            config.location.lat = geocode_res.value().lat;
-            config.location.lon = geocode_res.value().lon;
-        } else {
-            config.location.lat = 49.4521f;
-            config.location.lon = 11.0767f;
-        }
+        config.location.name = "Hasenbuck, Nürnberg";
+        config.location.lat = 49.4248f;
+        config.location.lon = 11.0897f;
 
         config.stocks = {
             {"^IXIC", "NASDAQ", "$"},
@@ -247,18 +240,9 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
             in >> j;
 
             if (j.contains("location")) {
-                config.location.address = j["location"].value("address", "Hasenbuk, Nürnberg, Germany");
-                config.location.lat = j["location"].value("lat", 0.0f);
-                config.location.lon = j["location"].value("lon", 0.0f);
-                
-                if (config.location.lat == 0.0f && config.location.lon == 0.0f) {
-                    auto geocode_res = geocode_address(config.location.address);
-                    if (geocode_res) {
-                        config.location.lat = geocode_res.value().lat;
-                        config.location.lon = geocode_res.value().lon;
-                        needs_save = true;
-                    }
-                }
+                config.location.name = j["location"].value("name", "Hasenbuck, Nürnberg");
+                config.location.lat = j["location"].value("lat", 49.4248f);
+                config.location.lon = j["location"].value("lon", 11.0897f);
             }
 
             if (j.contains("stocks") && j["stocks"].is_array()) {
