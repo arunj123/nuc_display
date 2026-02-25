@@ -59,11 +59,19 @@ jobs:
         ./tests/test_video_decoder
         ./tests/test_modules
 
-    - name: Run Memory Leak Checks (Hardware Context)
+    - name: Run Memory Leak Checks (Unit Tests)
       working-directory: build_hw
       run: |
         valgrind --leak-check=full --error-exitcode=1 ./tests/test_video_decoder
         valgrind --leak-check=full --error-exitcode=1 ./tests/test_modules
+
+    - name: Run Integration Tests (On-Target)
+      working-directory: build_hw
+      run: sudo ./tests/test_integration
+
+    - name: Run Integration Tests (Valgrind)
+      working-directory: build_hw
+      run: sudo valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 --trace-children=yes ./tests/test_integration
 
     - name: Deploy to Production Path
       run: |

@@ -97,3 +97,9 @@ target_link_libraries(test_video_decoder
     EGL
 )
 add_test(NAME VideoDecoderTests COMMAND test_video_decoder)
+
+# Integration test (on-target only, requires root + real hardware)
+add_executable(test_integration test_integration.cpp)
+target_include_directories(test_integration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(test_integration PRIVATE cxx_std_23)
+# Not added to CTest — run manually on NUC: sudo ./test_integration

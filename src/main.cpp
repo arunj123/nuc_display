@@ -85,11 +85,7 @@ int main() {
         }
     }
 
-    // 2. Initialize Thread Pool
-    utils::ThreadPool thread_pool(4);
-    std::cout << "[Core] Initialized Thread Pool.\n";
-
-    // 3. Initialize Modular Components
+    // 2. Initialize Modular Components
     auto renderer = std::make_unique<core::Renderer>();
     if (!headless_mode) {
         renderer->init(display->width(), display->height());
@@ -160,7 +156,12 @@ int main() {
 
     std::cout << "[Modules] All modular components initialized (Architecture Ready).\n";
 
-    // 4. Initial Weather Fetch
+    // 4. Initialize Thread Pool (Must be created AFTER modules so it is destroyed BEFORE them)
+    // This fixes Use-After-Free memory leaks on shutdown
+    utils::ThreadPool thread_pool(4);
+    std::cout << "[Core] Initialized Thread Pool.\n";
+
+    // 5. Initial Data Fetch
     auto weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
         return weather_module->fetch_current_weather(lat, lon, name);
     });
