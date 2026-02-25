@@ -41,7 +41,7 @@ size_t WeatherModule::WriteCallback(void* contents, size_t size, size_t nmemb, v
     return size * nmemb;
 }
 
-std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(float lat, float lon) {
+std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(float lat, float lon, const std::string& location_name) {
     CURL* curl;
     CURLcode res;
     std::string readBuffer;
@@ -50,6 +50,7 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
     if (!curl) return std::unexpected(WeatherError::NetworkError);
 
     std::stringstream url;
+    url << std::fixed << std::setprecision(6);
     url << "https://api.open-meteo.com/v1/forecast?latitude=" << lat 
         << "&longitude=" << lon 
         << "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,apparent_temperature,uv_index"
@@ -58,9 +59,6 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
     curl_easy_setopt(curl, CURLOPT_URL, url.str().c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-    
-    // Some systems need explicit CA cert path or disabling verify if certs are missing
-    // For now we'll assume system certs are okay
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
 
     res = curl_easy_perform(curl);
@@ -86,7 +84,7 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
         data.weather_code = current.value("weather_code", 0);
         data.description = get_weather_description(data.weather_code);
         data.icon_path   = get_weather_icon_filename(data.weather_code);
-        data.city        = "Home"; // Default from config
+        data.city        = location_name; // Dynamically resolved Name
         
         if (daily.contains("sunrise") && daily["sunrise"].is_array() && !daily["sunrise"].empty()) {
             std::string sr = daily["sunrise"][0];

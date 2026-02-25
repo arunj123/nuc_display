@@ -71,7 +71,7 @@ size_t ConfigModule::WriteCallback(void* contents, size_t size, size_t nmemb, vo
     return size * nmemb;
 }
 
-std::expected<std::pair<float, float>, ConfigError> ConfigModule::geocode_address(const std::string& address) {
+std::expected<GeocodeResult, ConfigError> ConfigModule::geocode_address(const std::string& address) {
     CURL* curl;
     CURLcode res;
     std::string readBuffer;
@@ -101,12 +101,28 @@ std::expected<std::pair<float, float>, ConfigError> ConfigModule::geocode_addres
     try {
         auto json = nlohmann::json::parse(readBuffer);
         if (json.contains("results") && json["results"].is_array() && !json["results"].empty()) {
-            float lat = json["results"][0]["latitude"];
-            float lon = json["results"][0]["longitude"];
-            std::cout << "Resolved to Lat: " << lat << ", Lon: " << lon << "\n";
-            return std::make_pair(lat, lon);
+            auto first = json["results"][0];
+            GeocodeResult result;
+            result.lat = first["latitude"];
+            result.lon = first["longitude"];
+            
+            // Build a nice display name: "Hasenbuck, Nürnberg" if possible
+            std::string name = first.value("name", "");
+            std::string admin = "";
+            if (first.contains("admin4")) admin = first["admin4"];
+            else if (first.contains("admin3")) admin = first["admin3"];
+            else if (first.contains("admin2")) admin = first["admin2"];
+
+            if (!admin.empty() && admin != name) {
+                result.resolved_name = name + ", " + admin;
+            } else {
+                result.resolved_name = name;
+            }
+
+            std::cout << "Resolved to " << result.resolved_name << " (Lat: " << result.lat << ", Lon: " << result.lon << ")\n";
+            return result;
         } else {
-            std::cerr << "Geocode returned no results for: " << address << " (using defaults)\n";
+            std::cerr << "Geocode returned no results for: " << address << "\n";
             return std::unexpected(ConfigError::GeocodeParseError);
         }
     } catch (const std::exception& e) {
@@ -189,10 +205,10 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
         std::cout << "Config not found at " << filepath << ". Generating default config.\n";
         config.location.address = "Hasenbuk, Nürnberg, Germany";
         
-        auto coords = geocode_address(config.location.address);
-        if (coords) {
-            config.location.lat = coords.value().first;
-            config.location.lon = coords.value().second;
+        auto geocode_res = geocode_address(config.location.address);
+        if (geocode_res) {
+            config.location.lat = geocode_res.value().lat;
+            config.location.lon = geocode_res.value().lon;
         } else {
             config.location.lat = 49.4521f;
             config.location.lon = 11.0767f;
@@ -236,10 +252,10 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 config.location.lon = j["location"].value("lon", 0.0f);
                 
                 if (config.location.lat == 0.0f && config.location.lon == 0.0f) {
-                    auto coords = geocode_address(config.location.address);
-                    if (coords) {
-                        config.location.lat = coords.value().first;
-                        config.location.lon = coords.value().second;
+                    auto geocode_res = geocode_address(config.location.address);
+                    if (geocode_res) {
+                        config.location.lat = geocode_res.value().lat;
+                        config.location.lon = geocode_res.value().lon;
                         needs_save = true;
                     }
                 }

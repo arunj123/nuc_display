@@ -70,6 +70,12 @@ uint16_t key_name_to_code(const std::string& name);
 std::string key_code_to_name(uint16_t code);
 bool is_valid_key_name(const std::string& name);
 
+struct GeocodeResult {
+    float lat;
+    float lon;
+    std::string resolved_name;
+};
+
 class ConfigModule {
 public:
     ConfigModule();
@@ -77,11 +83,11 @@ public:
 
     std::expected<AppConfig, ConfigError> load_or_create_config(const std::string& filepath);
 
+    // Uses Open-Meteo Geocoding API
+    std::expected<GeocodeResult, ConfigError> geocode_address(const std::string& address);
+
 private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
-    
-    // Uses Open-Meteo Geocoding API
-    std::expected<std::pair<float, float>, ConfigError> geocode_address(const std::string& address);
     
     // Save to disk
     void save_config(const AppConfig& config, const std::string& filepath);

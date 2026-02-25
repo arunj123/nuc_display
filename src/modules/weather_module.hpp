@@ -40,7 +40,7 @@ public:
     WeatherModule();
     ~WeatherModule();
 
-    std::expected<WeatherData, WeatherError> fetch_current_weather(float lat, float lon);
+    std::expected<WeatherData, WeatherError> fetch_current_weather(float lat, float lon, const std::string& location_name);
     
     // UI Helpers
     std::string get_weather_description(int code);
