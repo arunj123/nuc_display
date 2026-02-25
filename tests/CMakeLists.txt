@@ -24,9 +24,11 @@ add_test(NAME UtilsTests COMMAND test_utils)
 # We will focus on logic and state for now.
 add_executable(test_modules 
     test_modules.cpp 
+    stubs_alsa.cpp
     ../src/modules/image_loader.cpp 
     ../src/modules/text_renderer.cpp
     ../src/modules/weather_module.cpp
+    ../src/modules/news_module.cpp
     ../src/modules/config_module.cpp
     ../src/modules/config_validator.cpp
     ../src/modules/stock_module.cpp
@@ -34,13 +36,12 @@ add_executable(test_modules
 )
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})
 target_link_libraries(test_modules 
-    GTest::gtest_main
+    GTest::gmock_main
     ${FREETYPE_LIBRARIES}
     ${HARFBUZZ_LIBRARIES}
     ${LIBJPEG_LIBRARIES}
     ${LIBPNG_LIBRARIES}
     ${GLESv2_LIBRARIES}
-    ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
 )
 add_test(NAME ModuleTests COMMAND test_modules)
@@ -72,3 +73,26 @@ configure_file(sample_with_audio.mp4 sample_with_audio.mp4 COPYONLY)
 configure_file(sample_no_audio.mp4 sample_no_audio.mp4 COPYONLY)
 
 add_test(NAME VideoTests COMMAND test_video)
+
+# --- VideoDecoder Logic Tests (Mocked) ---
+add_executable(test_video_decoder
+    test_video_decoder.cpp
+    stubs_alsa.cpp
+    ../src/modules/video_decoder.cpp
+    ../src/modules/container_reader.cpp
+    ../src/core/renderer.cpp
+)
+target_include_directories(test_video_decoder PRIVATE ${TEST_INCLUDE_DIRS})
+target_link_libraries(test_video_decoder 
+    GTest::gmock_main
+    ${AVFORMAT_LIBRARIES}
+    ${AVCODEC_LIBRARIES}
+    ${AVUTIL_LIBRARIES}
+    ${SWSCALE_LIBRARIES}
+    ${SWRESAMPLE_LIBRARIES}
+    ${VA_LIBRARIES}
+    ${VA_DRM_LIBRARIES}
+    ${GLESv2_LIBRARIES}
+    EGL
+)
+add_test(NAME VideoDecoderTests COMMAND test_video_decoder)
