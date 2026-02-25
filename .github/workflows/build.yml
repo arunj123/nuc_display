@@ -53,7 +53,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Pause Production Service
-      run: sudo systemctl stop nuc_display.service || true
+      run: echo arun | sudo -S systemctl stop nuc_display.service || true
 
     - name: Configure and Build
       run: |
@@ -74,11 +74,11 @@ jobs:
 
     - name: Run Integration Tests (On-Target)
       working-directory: build_hw
-      run: sudo ./tests/test_integration
+      run: echo arun | sudo -S ./tests/test_integration
 
     - name: Run Integration Tests (Valgrind)
       working-directory: build_hw
-      run: sudo valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 --trace-children=yes ./tests/test_integration
+      run: echo arun | sudo -S valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 --trace-children=yes ./tests/test_integration
 
     - name: Deploy to Production Path
       run: |
@@ -90,4 +90,4 @@ jobs:
 
     - name: Restart Production Service
       if: always()
-      run: sudo systemctl restart nuc_display.service || true
+      run: echo arun | sudo -S systemctl restart nuc_display.service || true
