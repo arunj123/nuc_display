@@ -12,6 +12,7 @@
 namespace nuc_display::modules {
 
 NewsModule::NewsModule() {}
+
 NewsModule::~NewsModule() {}
 
 size_t NewsModule::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -39,7 +40,6 @@ void NewsModule::update_headlines() {
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        // Important: Many providers block the default CURL/libcurl User-Agent
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
         CURLcode res = curl_easy_perform(curl);
@@ -177,14 +177,27 @@ void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
     double phase_time = std::fmod(time_sec, cycle_duration);
     
     const auto& item = headlines_[headline_idx];
-    std::string prefix = "- ";
-    std::string full_text = prefix + item.title + " (" + item.source + ")";
-    
-    // Wrap the text dynamically (approx 52 chars fits nicely in left column at 24px)
-    auto lines = wrap_news_text(full_text, 54);
     
     float line_height = 0.035f;
-    float block_h = lines.size() * line_height;
+
+    // Caching logic: If headline index changed, re-wrap and re-shape
+    if (cache_.index != headline_idx) {
+        std::string prefix = "- ";
+        std::string full_text = prefix + item.title + " (" + item.source + ")";
+        auto lines = wrap_news_text(full_text, 54);
+        
+        cache_.lines.clear();
+        text_renderer.set_pixel_size(0, 24);
+        for (const auto& line : lines) {
+            if (auto glyphs_opt = text_renderer.shape_text(line)) {
+                cache_.lines.push_back(std::move(glyphs_opt.value()));
+            }
+        }
+        cache_.block_h = cache_.lines.size() * line_height;
+        cache_.index = headline_idx;
+    }
+    
+    float block_h = cache_.block_h;
     
     // Y-axis animation parameters
     float center_y_base = y + (h - block_h) * 0.5f + 0.02f; // +0.02f offset for header space
@@ -239,12 +252,9 @@ void NewsModule::render(core::Renderer& renderer, TextRenderer& text_renderer,
     int vp_h = static_cast<int>((h - 0.02f) * renderer.height()); // Scissor only the content area
     glScissor(vp_x, vp_y, vp_w, vp_h);
 
-    text_renderer.set_pixel_size(0, 24); 
     float draw_y = current_y;
-    for (const auto& line : lines) {
-        if (auto glyphs_opt = text_renderer.shape_text(line)) {
-            renderer.draw_text(glyphs_opt.value(), x, draw_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
-        }
+    for (const auto& glyph_line : cache_.lines) {
+        renderer.draw_text(glyph_line, x, draw_y, 1.0f, 0.8f, 0.8f, 0.8f, alpha);
         draw_y += line_height;
     }
     

@@ -1,7 +1,16 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <curl/curl.h>
 #include "modules/image_loader.hpp"
 #include "modules/text_renderer.hpp"
+
+// Global test environment: ensures curl is initialized before any module tests
+class CurlEnvironment : public ::testing::Environment {
+public:
+    void SetUp() override { curl_global_init(CURL_GLOBAL_ALL); }
+    void TearDown() override { curl_global_cleanup(); }
+};
+static auto* const curl_env = ::testing::AddGlobalTestEnvironment(new CurlEnvironment);
 
 using namespace nuc_display::modules;
 

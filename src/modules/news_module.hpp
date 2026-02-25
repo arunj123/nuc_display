@@ -4,7 +4,8 @@
 #include <vector>
 #include <mutex>
 
-namespace nuc_display::core { class Renderer; }
+#include "core/renderer.hpp"
+
 namespace nuc_display::modules { class TextRenderer; }
 
 namespace nuc_display::modules {
@@ -33,6 +34,13 @@ private:
     
     std::vector<NewsItem> headlines_;
     mutable std::mutex mutex_;
+    
+    // Performance optimizations: Cache for shaped headlines
+    struct CachedHeadline {
+        int index = -1;
+        std::vector<std::vector<GlyphData>> lines;
+        float block_h = 0.0f;
+    } cache_;
 };
 
 } // namespace nuc_display::modules

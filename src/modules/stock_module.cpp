@@ -14,8 +14,7 @@
 
 namespace nuc_display::modules {
 
-StockModule::StockModule() {
-}
+StockModule::StockModule() {}
 
 StockModule::~StockModule() {
     // Textures live for the app duration — no renderer ref available here
@@ -49,10 +48,12 @@ std::vector<float> resample_array(const std::vector<float>& input, int target_si
 }
 
 std::optional<StockChart> fetch_single_range(CURL* curl, const std::string& symbol, const std::string& label, const std::string& range, const std::string& interval) {
+    if (!curl) return std::nullopt;
     std::string readBuffer;
     std::string url = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol + "?range=" + range + "&interval=" + interval;
     
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StockModule::WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
     
     CURLcode res = curl_easy_perform(curl);
@@ -95,8 +96,8 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
 
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    // Ignore SSL issues locally if needed
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
 
     StockData data;
     data.symbol = config.symbol;
@@ -108,7 +109,9 @@ std::expected<StockData, StockError> StockModule::fetch_stock(const StockConfig&
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &current_price_readBuffer);
     curl_easy_setopt(curl, CURLOPT_URL, ("https://query1.finance.yahoo.com/v8/finance/chart/" + config.symbol + "?range=1d&interval=5m").c_str());
     
-    if (curl_easy_perform(curl) != CURLE_OK) {
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        std::cerr << "[StockModule] CURL error for " << config.symbol << " (current price): " << curl_easy_strerror(res) << "\n";
         curl_easy_cleanup(curl);
         return std::unexpected(StockError::NetworkError);
     }
@@ -439,9 +442,8 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
             points[i * 2 + 1] = current_y + chart_h - ((interp_prices[i] - min_p) / (max_p - min_p)) * chart_h;
         }
 
-        // draw_line_strip expects std::vector, wrap in a span-like view
-        std::vector<float> pts(points, points + n * 2);
-        renderer.draw_line_strip(pts, r, g, b, alpha, 5.0f);
+        // Draw line with green/red trend
+        renderer.draw_line_strip(points, n * 2, r, g, b, alpha, 5.0f);
 
         // Draw Scales
         text_renderer.set_pixel_size(0, 24);

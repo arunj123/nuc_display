@@ -28,12 +28,12 @@ static std::vector<std::string> wrap_text(const std::string& text, size_t max_ch
     return lines;
 }
 
-WeatherModule::WeatherModule() {
-    curl_global_init(CURL_GLOBAL_ALL);
-}
+WeatherModule::WeatherModule() {}
 
 WeatherModule::~WeatherModule() {
-    curl_global_cleanup();
+    if (curl_handle_) {
+        curl_easy_cleanup(curl_handle_);
+    }
 }
 
 size_t WeatherModule::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -42,12 +42,13 @@ size_t WeatherModule::WriteCallback(void* contents, size_t size, size_t nmemb, v
 }
 
 std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(float lat, float lon, const std::string& location_name) {
-    CURL* curl;
+    if (!curl_handle_) {
+        curl_handle_ = curl_easy_init();
+    }
+    if (!curl_handle_) return std::unexpected(WeatherError::NetworkError);
+
     CURLcode res;
     std::string readBuffer;
-
-    curl = curl_easy_init();
-    if (!curl) return std::unexpected(WeatherError::NetworkError);
 
     std::stringstream url;
     url << std::fixed << std::setprecision(6);
@@ -56,13 +57,13 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
         << "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,apparent_temperature,uv_index"
         << "&daily=sunrise,sunset&timezone=auto";
 
-    curl_easy_setopt(curl, CURLOPT_URL, url.str().c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_reset(curl_handle_);
+    curl_easy_setopt(curl_handle_, CURLOPT_URL, url.str().c_str());
+    curl_easy_setopt(curl_handle_, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl_handle_, CURLOPT_WRITEDATA, &readBuffer);
+    curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 1L);
 
-    res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
+    res = curl_easy_perform(curl_handle_);
 
     if (res != CURLE_OK) {
         std::cerr << "CURL Error: " << curl_easy_strerror(res) << "\n";
@@ -152,8 +153,8 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     float aspect = (float)renderer.width() / renderer.height();
 
     // --- Draw Vertical Separator Line ---
-    std::vector<float> sep_pts = { sep_x, 0.03f, sep_x, 0.97f };
-    renderer.draw_line_strip(sep_pts, 0.2f, 0.2f, 0.25f, 0.6f, 1.0f);
+    float sep_pts[] = { sep_x, 0.03f, sep_x, 0.97f };
+    renderer.draw_line_strip(sep_pts, 4, 0.2f, 0.2f, 0.25f, 0.6f, 1.0f);
 
     // =========================================================
     // ROW 1: Time (left) & Temperature (right)   (y = 0.04 - 0.12)

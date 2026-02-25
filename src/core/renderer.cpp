@@ -429,9 +429,9 @@ void Renderer::draw_text(const std::vector<modules::GlyphData>& glyphs, float st
     }
 }
 
-void Renderer::draw_line_strip(const std::vector<float>& points, float r, float g, float b, float a, float line_width) {
-    if (points.size() < 4) return;
-    size_t num_points = points.size() / 2;
+void Renderer::draw_line_strip(const float* points, size_t count, float r, float g, float b, float a, float line_width) {
+    if (count < 4) return;
+    size_t num_points = count / 2;
     // Stack-alloc interleaved vertices (max 512 points = 2048 floats, ~8KB on stack)
     constexpr size_t MAX_POINTS = 512;
     if (num_points > MAX_POINTS) num_points = MAX_POINTS;

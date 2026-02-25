@@ -42,6 +42,7 @@ target_link_libraries(test_modules
     ${LIBJPEG_LIBRARIES}
     ${LIBPNG_LIBRARIES}
     ${GLESv2_LIBRARIES}
+    ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
 )
 add_test(NAME ModuleTests COMMAND test_modules)

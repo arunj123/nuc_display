@@ -3,6 +3,7 @@
 #include <GLES2/gl2.h>
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 namespace nuc_display::modules {
 struct GlyphData {
@@ -42,7 +43,7 @@ public:
     // Draw calls (using normalized coords 0.0 to 1.0)
     void draw_quad(uint32_t texture_id, float x, float y, float w, float h, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
     void draw_text(const std::vector<modules::GlyphData>& glyphs, float start_x, float start_y, float scale, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
-    void draw_line_strip(const std::vector<float>& points, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f, float line_width = 2.0f);
+    void draw_line_strip(const float* points, size_t count, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f, float line_width = 2.0f);
     void draw_animated_weather(int weather_code, float x, float y, float w, float h, float time_sec, bool is_night = false);
 
     GLuint compile_shader(GLenum type, const char* source);

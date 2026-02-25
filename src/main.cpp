@@ -342,8 +342,8 @@ int main() {
             renderer->clear(0.05f, 0.05f, 0.07f, 1.0f);
             
             // Draw vertical separator even in offline mode
-            std::vector<float> sep_pts = { 0.405f, 0.03f, 0.405f, 0.97f };
-            renderer->draw_line_strip(sep_pts, 0.2f, 0.2f, 0.25f, 0.6f, 1.0f);
+            float sep_pts[] = { 0.405f, 0.03f, 0.405f, 0.97f };
+            renderer->draw_line_strip(sep_pts, 4, 0.2f, 0.2f, 0.25f, 0.6f, 1.0f);
             
             // Time & Date (always available — uses system clock)
             auto wall_now = std::chrono::system_clock::now();
