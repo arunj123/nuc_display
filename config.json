@@ -129,12 +129,6 @@
             "type": "weather"
         },
         {
-            "type": "stocks"
-        },
-        {
-            "type": "news"
-        },
-        {
             "type": "video",
             "video_index": 0
         },
@@ -149,6 +143,12 @@
         {
             "type": "video",
             "video_index": 3
+        },
+        {
+            "type": "stocks"
+        },
+        {
+            "type": "news"
         }
     ]
 }
