@@ -45,18 +45,20 @@ jobs:
   hardware_regression_nuc:
     runs-on: self-hosted
     needs: build_and_test_cloud
+    env:
+      NUC_PASSWORD: ${{ secrets.NUC_PASSWORD }}
     if: |
       github.repository_owner == 'arunj123' && 
       (github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
     
     steps:
     - name: Fix Workspace Permissions (Pre-Checkout)
-      run: echo arun | sudo -S chown -R arun:arun . || true
+      run: echo "${NUC_PASSWORD}" | sudo -S chown -R arun:arun . || true
 
     - uses: actions/checkout@v4
 
     - name: Pause Production Service
-      run: echo arun | sudo -S systemctl stop nuc_display.service || true
+      run: echo "${NUC_PASSWORD}" | sudo -S systemctl stop nuc_display.service || true
 
     - name: Configure and Build
       run: |
@@ -77,11 +79,11 @@ jobs:
 
     - name: Run Integration Tests (On-Target)
       working-directory: build_hw
-      run: echo arun | sudo -S ./tests/test_integration
+      run: echo "${NUC_PASSWORD}" | sudo -S ./tests/test_integration
 
     - name: Run Integration Tests (Valgrind)
       working-directory: build_hw
-      run: echo arun | sudo -S valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 --trace-children=yes ./tests/test_integration
+      run: echo "${NUC_PASSWORD}" | sudo -S valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 --trace-children=yes ./tests/test_integration
 
     - name: Deploy to Production Path
       run: |
@@ -93,8 +95,8 @@ jobs:
 
     - name: Restart Production Service
       if: always()
-      run: echo arun | sudo -S systemctl restart nuc_display.service || true
+      run: echo "${NUC_PASSWORD}" | sudo -S systemctl restart nuc_display.service || true
 
     - name: Fix Workspace Permissions (Post-Cleanup)
       if: always()
-      run: echo arun | sudo -S chown -R arun:arun . || true
+      run: echo "${NUC_PASSWORD}" | sudo -S chown -R arun:arun . || true
