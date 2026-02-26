@@ -235,12 +235,10 @@ static ScenarioResult run_scenario(
     }
 
     if (pid == 0) {
-        // Child: exec the nuc_display binary with test config
-        // We use the test config by symlinking/copying it
-        std::filesystem::copy_file(TEST_CONFIG_PATH, "config.json",
-            std::filesystem::copy_options::overwrite_existing);
+        // Child: exec the nuc_display binary with the temporary test config path
+        // This avoids overwriting the real config.json in the current directory
+        execl(binary_path.c_str(), binary_path.c_str(), "--config", TEST_CONFIG_PATH, nullptr);
         
-        execl(binary_path.c_str(), binary_path.c_str(), nullptr);
         // If exec fails:
         std::cerr << "[Child] Failed to exec " << binary_path << ": " << strerror(errno) << "\n";
         _exit(127);

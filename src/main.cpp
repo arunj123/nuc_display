@@ -39,7 +39,15 @@ void sigusr1_handler(int) {
     g_screenshot_requested = true;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    std::string config_path = "config.json";
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--config" && i + 1 < argc) {
+            config_path = argv[i + 1];
+            i++;
+        }
+    }
+
     curl_global_init(CURL_GLOBAL_ALL);
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGTERM, sigint_handler);
@@ -69,7 +77,7 @@ int main() {
 
     // 1.5 Load Configuration
     auto config_module = std::make_unique<modules::ConfigModule>();
-    auto app_config_res = config_module->load_or_create_config("config.json");
+    auto app_config_res = config_module->load_or_create_config(config_path);
     if (!app_config_res) {
         std::cerr << "[Core] Fatal Config Error! Cannot proceed.\n";
         return 1;
