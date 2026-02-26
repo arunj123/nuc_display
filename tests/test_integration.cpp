@@ -247,7 +247,8 @@ static ScenarioResult run_scenario(
     }
 
     // Parent: wait for app to start, then inject keys
-    std::this_thread::sleep_for(std::chrono::seconds(2)); // 2s initial wait
+    // Valgrind requires a longer startup window (at least 5s on this hardware)
+    std::this_thread::sleep_for(std::chrono::seconds(5)); 
 
     // Run the scenario key injection
     scenario_fn(injector);
@@ -267,7 +268,7 @@ static ScenarioResult run_scenario(
     // Wait for child with timeout
     int status = 0;
     int wait_result = 0;
-    for (int i = 0; i < 200; ++i) { // 20s timeout
+    for (int i = 0; i < 600; ++i) { // 60s timeout (Valgrind is EXTREMELY slow on teardown)
         wait_result = waitpid(pid, &status, WNOHANG);
         if (wait_result > 0) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
