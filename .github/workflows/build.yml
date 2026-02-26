@@ -50,6 +50,9 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
     
     steps:
+    - name: Fix Workspace Permissions (Pre-Checkout)
+      run: echo arun | sudo -S chown -R arun:arun . || true
+
     - uses: actions/checkout@v4
 
     - name: Pause Production Service
@@ -91,3 +94,7 @@ jobs:
     - name: Restart Production Service
       if: always()
       run: echo arun | sudo -S systemctl restart nuc_display.service || true
+
+    - name: Fix Workspace Permissions (Post-Cleanup)
+      if: always()
+      run: echo arun | sudo -S chown -R arun:arun . || true
