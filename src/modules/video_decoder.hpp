@@ -56,6 +56,7 @@ public:
     
     void set_audio_enabled(bool enabled);
     void init_audio(const std::string& device_name = "default");
+    void set_paused(bool paused, double time_sec);
 
 private:
     void cleanup_codec();
@@ -122,6 +123,9 @@ private:
     bool is_seeking_ = false;
     double current_pos_sec_ = 0.0;
     double seek_offset_sec_ = 0.0;
+
+    bool is_paused_ = false;
+    double pause_start_time_ = -1.0;
 };
 
 } // namespace nuc_display::modules

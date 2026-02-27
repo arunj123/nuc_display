@@ -427,9 +427,50 @@ void VideoDecoder::init_audio(const std::string& device_name) {
     }
 }
 
+void VideoDecoder::set_paused(bool paused, double time_sec) {
+    if (this->is_paused_ == paused) return;
+
+    if (paused) {
+        std::cout << "[VideoDecoder] Pausing playback at " << time_sec << "s\n";
+        this->is_paused_ = true;
+        this->pause_start_time_ = time_sec;
+        
+        if (this->pcm_handle_) {
+            // Try to pause audio hardware playback immediately
+            int err = snd_pcm_pause(this->pcm_handle_, 1);
+            if (err < 0) {
+                // If hardware pause is not supported, drop the buffer entirely
+                // to stop audio immediately as requested.
+                std::cout << "[VideoDecoder] ALSA pause not supported (" << snd_strerror(err) 
+                          << "). Dropping PCM buffer.\n";
+                snd_pcm_drop(this->pcm_handle_);
+            }
+        }
+    } else {
+        std::cout << "[VideoDecoder] Resuming playback at " << time_sec << "s\n";
+        if (this->pause_start_time_ > 0 && this->video_start_time_ > 0) {
+            double pause_duration = time_sec - this->pause_start_time_;
+            this->video_start_time_ += pause_duration;
+            std::cout << "[VideoDecoder] Shifted video_start_time by " << pause_duration << "s\n";
+        }
+        this->is_paused_ = false;
+        this->pause_start_time_ = -1.0;
+        
+        if (this->pcm_handle_) {
+            int err = snd_pcm_pause(this->pcm_handle_, 0);
+            if (err < 0) {
+                // If it was dropped, we need to prepare it again.
+                // snd_pcm_prepare is safe even if it wasn't dropped.
+                snd_pcm_prepare(this->pcm_handle_);
+                this->audio_prebuffering_ = true; // Refill prebuffer after drop
+            }
+        }
+    }
+}
+
 std::expected<void, MediaError> VideoDecoder::process(double time_sec) {
     (void)time_sec;
-    if (!this->codec_ctx_) return {};
+    if (!this->codec_ctx_ || this->is_paused_) return {};
 
     // 1. Buffer Management: Refill queues if they are running low
     // 1a. Fill Packet Queue from Container
@@ -756,7 +797,7 @@ bool VideoDecoder::render(core::Renderer& renderer, EGLDisplay egl_display,
     AVFrame* frame_to_render = nullptr;
     {
         std::lock_guard<std::mutex> lock(this->queue_mutex_);
-        if (!this->codec_ctx_) return false; // Codec was cleaned up (e.g. by next_video on another thread)
+        if (!this->codec_ctx_ || this->is_paused_) return true; // Keep old frame if paused
         if (this->video_frame_queue_.empty()) {
             // Only signal "done" when EOF is reached AND all packets have been consumed AND all frames shown
             // AND we are not currently waiting for a seek to complete.

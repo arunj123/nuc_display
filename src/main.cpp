@@ -208,6 +208,9 @@ int main(int argc, char** argv) {
     std::cout << "--- Starting main loop ---" << std::endl;
 
     while (g_running) {
+        auto now_p = std::chrono::steady_clock::now();
+        double render_time_sec = std::chrono::duration<double>(now_p - program_start_time).count();
+
         // --- POLL INPUT EVENTS ---
         while (auto event = input_module->pop_event()) {
             if (event->value != 1) continue; // Only handle KEY_DOWN
@@ -217,6 +220,9 @@ int main(int argc, char** argv) {
             if (app_config.global_keys.hide_videos && code == *app_config.global_keys.hide_videos) {
                 videos_hidden = !videos_hidden;
                 std::cout << "[Core] Videos " << (videos_hidden ? "HIDDEN" : "SHOWN") << "\n";
+                for (auto& decoder : video_decoders) {
+                    decoder->set_paused(videos_hidden, render_time_sec);
+                }
             }
 
             // Per-video key handling
@@ -271,9 +277,6 @@ int main(int argc, char** argv) {
             }
         }
         
-        auto now_p = std::chrono::steady_clock::now();
-        double render_time_sec = std::chrono::duration<double>(now_p - program_start_time).count();
-
         // --- CHECK WEATHER UPDATES (Every 10 mins) ---
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::minutes>(now - last_weather_update).count() >= 10) {
