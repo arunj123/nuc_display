@@ -218,8 +218,9 @@ void StockModule::update_all_data() {
 }
 
 void StockModule::next_stock() {
-    if (stock_data_.empty()) return;
     manual_mode_ = true;
+    manual_start_time_ = -1.0;
+    if (stock_data_.empty()) return;
     current_index_ = (current_index_ + 1) % stock_data_.size();
     current_chart_index_ = 0;
     last_switch_time_ = -1.0; // Force reset on next render
@@ -227,8 +228,9 @@ void StockModule::next_stock() {
 }
 
 void StockModule::prev_stock() {
-    if (stock_data_.empty()) return;
     manual_mode_ = true;
+    manual_start_time_ = -1.0;
+    if (stock_data_.empty()) return;
     current_index_ = (current_index_ + stock_data_.size() - 1) % stock_data_.size();
     current_chart_index_ = 0;
     last_switch_time_ = -1.0;
@@ -236,8 +238,9 @@ void StockModule::prev_stock() {
 }
 
 void StockModule::next_chart() {
-    if (stock_data_.empty()) return;
     manual_mode_ = true;
+    manual_start_time_ = -1.0;
+    if (stock_data_.empty()) return;
     const auto& data = stock_data_[current_index_];
     if (!data.charts.empty()) {
         current_chart_index_ = (current_chart_index_ + 1) % data.charts.size();
@@ -247,8 +250,9 @@ void StockModule::next_chart() {
 }
 
 void StockModule::prev_chart() {
-    if (stock_data_.empty()) return;
     manual_mode_ = true;
+    manual_start_time_ = -1.0;
+    if (stock_data_.empty()) return;
     const auto& data = stock_data_[current_index_];
     if (!data.charts.empty()) {
         current_chart_index_ = (current_chart_index_ + data.charts.size() - 1) % data.charts.size();
@@ -258,14 +262,25 @@ void StockModule::prev_chart() {
 }
 
 void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, double time_sec) {
+    if (manual_mode_) {
+        // Resolve sentinel timers on first render
+        if (last_switch_time_ < 0.0) last_switch_time_ = time_sec;
+        if (manual_start_time_ < 0.0) manual_start_time_ = time_sec;
+
+        // Auto-reset to cycling mode after timeout
+        if (time_sec - manual_start_time_ > manual_timeout_sec_) {
+            manual_mode_ = false;
+            last_switch_time_ = time_sec;
+            std::cout << "[Stock] Manual mode timeout — resuming auto-cycle\n";
+        }
+    }
+
     if (stock_data_.empty()) return;
 
     double display_duration_per_chart = 3.0; // 3 seconds per timeframe
     size_t active_chart_idx = 0;
 
     if (manual_mode_) {
-        // Manual mode: use stored indices, reset timer on first render after key press
-        if (last_switch_time_ < 0.0) last_switch_time_ = time_sec;
         active_chart_idx = current_chart_index_;
     } else {
         double display_duration_per_stock = display_duration_per_chart * stock_data_[current_index_].charts.size();
@@ -475,6 +490,21 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
 
 bool StockModule::is_empty() const {
     return stock_data_.empty();
+}
+
+bool StockModule::is_manual_mode() const {
+    return manual_mode_;
+}
+
+size_t StockModule::get_current_index() const {
+    return current_index_;
+}
+
+void StockModule::clear_and_inject_test_data(const std::vector<StockData>& data) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stock_data_ = data;
+    current_index_ = 0;
+    current_chart_index_ = 0;
 }
 
 } // namespace nuc_display::modules

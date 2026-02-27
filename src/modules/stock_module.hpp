@@ -57,6 +57,9 @@ public:
     void prev_chart();
     
     bool is_empty() const;
+    bool is_manual_mode() const;
+    size_t get_current_index() const;
+    void clear_and_inject_test_data(const std::vector<StockData>& data);
 
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
 
@@ -70,6 +73,8 @@ private:
     size_t current_chart_index_ = 0;
     double last_switch_time_ = 0.0;
     std::atomic<bool> manual_mode_{false};
+    double manual_start_time_ = 0.0;
+    static constexpr double manual_timeout_sec_ = 15.0;
     
     std::map<std::string, bool> icon_attempted_;
     std::map<std::string, uint32_t> icon_textures_;

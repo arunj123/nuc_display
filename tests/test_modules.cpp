@@ -301,19 +301,48 @@ TEST(ConfigValidatorTest, StockKeyDuplicateAmongStockKeys) {
 
 TEST(StockModuleTest, ManualCyclingLogic) {
     StockModule module;
-    // Add 3 stocks
-    module.add_symbol("AAPL", "Apple", "$");
-    module.add_symbol("GOOG", "Alphabet", "$");
-    module.add_symbol("MSFT", "Microsoft", "$");
+    
+    std::vector<StockData> test_data;
+    test_data.push_back({"AAPL", "Apple", "$", 150.0f, {}});
+    test_data.push_back({"GOOG", "Alphabet", "$", 2800.0f, {}});
+    module.clear_and_inject_test_data(test_data);
 
-    // next_stock / prev_stock should not crash even with no data
+    EXPECT_FALSE(module.is_manual_mode());
+    EXPECT_EQ(module.get_current_index(), 0u);
+
     module.next_stock();
-    module.prev_stock();
+    EXPECT_TRUE(module.is_manual_mode());
+    EXPECT_EQ(module.get_current_index(), 1u);
+    
     module.next_chart();
-    module.prev_chart();
+    EXPECT_TRUE(module.is_manual_mode());
+    
+    module.prev_stock();
+    EXPECT_EQ(module.get_current_index(), 0u);
+}
 
-    // Test passes if no crash — cycling on empty data is gracefully handled
-    SUCCEED();
+TEST(StockModuleTest, ManualModeAutoReset) {
+    StockModule module;
+    // We don't need stock_data to be non-empty now since we moved the logic to the top of render().
+    
+    nuc_display::core::Renderer renderer;
+    nuc_display::modules::TextRenderer text_renderer;
+
+    module.next_stock();
+    EXPECT_TRUE(module.is_manual_mode());
+    
+    // Render at t=0 (Initializes manual_start_time_)
+    module.render(renderer, text_renderer, 0.0);
+    EXPECT_TRUE(module.is_manual_mode());
+    
+    // Render at t=10 (Within 15s timeout)
+    module.render(renderer, text_renderer, 10.0);
+    EXPECT_TRUE(module.is_manual_mode());
+    
+    // Render at t=16 (Exceeds 15s timeout)
+    module.render(renderer, text_renderer, 16.0);
+    
+    EXPECT_FALSE(module.is_manual_mode());
 }
 
 TEST_F(ConfigModuleTest, ParseLayoutOrder) {
