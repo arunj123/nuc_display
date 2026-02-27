@@ -7,14 +7,15 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <va/va.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/hwcontext_drm.h>
+#ifndef PLATFORM_RPI
 #include <va/va.h>
 #include <va/va_drm.h>
+#endif
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
@@ -37,8 +38,13 @@ public:
     std::expected<void, MediaError> load(const std::string& filepath) override;
     std::expected<void, MediaError> process(double time_sec) override;
 
-    // VA-API specific initialization
+#ifndef PLATFORM_RPI
+    // VA-API specific initialization (NUC only)
     std::expected<void, MediaError> init_vaapi(int drm_fd);
+#else
+    // V4L2 M2M initialization (Raspberry Pi only)
+    std::expected<void, MediaError> init_v4l2(int drm_fd);
+#endif
 
     // Optional: render the current frame to OpenGL via EGLImage zero-copy
     bool render(core::Renderer& renderer, EGLDisplay egl_display, 
@@ -76,9 +82,15 @@ private:
     std::deque<AVPacket*> packet_queue_;
     std::deque<AVFrame*> video_frame_queue_;
     std::deque<AVFrame*> audio_frame_queue_;
+#ifdef PLATFORM_RPI
+    const size_t max_packets_ = 30;       // Reduced for 512MB RAM
+    const size_t max_video_frames_ = 3;
+    const size_t max_audio_frames_ = 8;
+#else
     const size_t max_packets_ = 100;
-    const size_t max_video_frames_ = 4; // Reduced from 8 to prevent hardware surface exhaustion
+    const size_t max_video_frames_ = 4;
     const size_t max_audio_frames_ = 20;
+#endif
     bool eof_reached_ = false;
     
     // Audio State
@@ -104,7 +116,9 @@ private:
     GLuint external_tex_coord_loc_ = 0;
     GLuint external_sampler_loc_ = 0;
     
+#ifndef PLATFORM_RPI
     VADisplay va_display_ = nullptr;
+#endif
     double last_frame_time_ = -1.0;
     double video_start_time_ = -1.0;
     AVRational stream_timebase_ = {1, 1};

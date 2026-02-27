@@ -17,6 +17,16 @@ PerformanceMonitor::PerformanceMonitor() {
     }
 
     // Read max GPU frequency once
+#ifdef PLATFORM_RPI
+    // Pi: VideoCore IV max frequency via devfreq or vcgencmd
+    std::ifstream max_freq_file("/sys/devices/platform/soc/20c00000.v3d/devfreq/20c00000.v3d/max_freq");
+    if (max_freq_file) {
+        double hz; max_freq_file >> hz;
+        this->current_stats_.gpu_max_freq_mhz = hz / 1000000.0;
+    } else {
+        this->current_stats_.gpu_max_freq_mhz = 300.0; // VideoCore IV default max
+    }
+#else
     std::ifstream max_freq_file("/sys/class/drm/card1/gt_max_freq_mhz");
     if (max_freq_file) {
         max_freq_file >> this->current_stats_.gpu_max_freq_mhz;
@@ -24,6 +34,7 @@ PerformanceMonitor::PerformanceMonitor() {
         std::ifstream max_freq_file0("/sys/class/drm/card0/gt_max_freq_mhz");
         if (max_freq_file0) max_freq_file0 >> this->current_stats_.gpu_max_freq_mhz;
     }
+#endif
 }
 
 void PerformanceMonitor::update() {
@@ -72,20 +83,32 @@ void PerformanceMonitor::update_ram() {
 }
 
 void PerformanceMonitor::update_gpu() {
+#ifdef PLATFORM_RPI
+    // Pi: VideoCore IV actual frequency via devfreq
+    std::ifstream freq_file("/sys/devices/platform/soc/20c00000.v3d/devfreq/20c00000.v3d/cur_freq");
+    if (freq_file) {
+        double hz; freq_file >> hz;
+        this->current_stats_.gpu_freq_mhz = hz / 1000000.0;
+    }
+#else
     // Intel GPU frequency in MHz
     std::ifstream freq_file("/sys/class/drm/card1/gt_act_freq_mhz");
     if (freq_file) {
         freq_file >> this->current_stats_.gpu_freq_mhz;
     } else {
-        // Try card0 if card1 fails
         std::ifstream freq_file0("/sys/class/drm/card0/gt_act_freq_mhz");
         if (freq_file0) freq_file0 >> this->current_stats_.gpu_freq_mhz;
     }
+#endif
 }
 
 void PerformanceMonitor::update_temp() {
-    // Temperature in millidegrees C
+#ifdef PLATFORM_RPI
+    // Pi: thermal zone 0 is the SoC temperature
+    std::ifstream temp_file("/sys/class/thermal/thermal_zone0/temp");
+#else
     std::ifstream temp_file("/sys/class/hwmon/hwmon2/temp1_input");
+#endif
     if (temp_file) {
         double temp_milli;
         temp_file >> temp_milli;

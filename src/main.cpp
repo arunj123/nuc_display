@@ -135,7 +135,11 @@ int main(int argc, char** argv) {
         
         auto decoder = std::make_unique<modules::VideoDecoder>();
         if (display) {
+#ifdef PLATFORM_RPI
+            decoder->init_v4l2(display->drm_fd());
+#else
             decoder->init_vaapi(display->drm_fd());
+#endif
         }
         decoder->set_audio_enabled(v_config.audio_enabled);
         if (v_config.audio_enabled) {

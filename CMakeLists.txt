@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Platform selection
+option(PLATFORM_RPI "Build for Raspberry Pi (V4L2 M2M video backend)" OFF)
+
 # Add compiler warnings
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 
@@ -18,15 +21,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
-# Core Graphics
+# Core Graphics (common to both platforms)
 pkg_check_modules(DRM REQUIRED libdrm)
 pkg_check_modules(GBM REQUIRED gbm)
 pkg_check_modules(EGL REQUIRED egl)
 pkg_check_modules(GLESv2 REQUIRED glesv2)
 
-# Hardware Acceleration & Video
-pkg_check_modules(VA REQUIRED libva)
-pkg_check_modules(VA_DRM REQUIRED libva-drm)
+# Platform-specific: Hardware Video Acceleration
+if(NOT PLATFORM_RPI)
+    pkg_check_modules(VA REQUIRED libva)
+    pkg_check_modules(VA_DRM REQUIRED libva-drm)
+endif()
 
 # FFmpeg for Video and Audio Containers
 pkg_check_modules(AVFORMAT REQUIRED libavformat)
@@ -57,7 +62,6 @@ include_directories(
     ${GBM_INCLUDE_DIRS}
     ${EGL_INCLUDE_DIRS}
     ${GLESv2_INCLUDE_DIRS}
-    ${VA_INCLUDE_DIRS}
     ${AVFORMAT_INCLUDE_DIRS}
     ${ALSA_INCLUDE_DIRS}
     ${FREETYPE_INCLUDE_DIRS}
@@ -68,6 +72,17 @@ include_directories(
     src
 )
 
+if(NOT PLATFORM_RPI)
+    include_directories(${VA_INCLUDE_DIRS})
+endif()
+
+# Platform-specific video decoder source
+if(PLATFORM_RPI)
+    set(VIDEO_DECODER_SRC src/modules/video_decoder_v4l2.cpp)
+else()
+    set(VIDEO_DECODER_SRC src/modules/video_decoder.cpp)
+endif()
+
 # Core Source Files
 set(SRC_FILES
     src/main.cpp
@@ -75,7 +90,7 @@ set(SRC_FILES
     src/core/renderer.cpp
     src/modules/image_loader.cpp
     src/modules/text_renderer.cpp
-    src/modules/video_decoder.cpp
+    ${VIDEO_DECODER_SRC}
     src/modules/container_reader.cpp
     src/modules/weather_module.cpp
     src/modules/config_module.cpp
@@ -89,13 +104,16 @@ set(SRC_FILES
 
 add_executable(nuc_display ${SRC_FILES})
 
+# Propagate PLATFORM_RPI as a compile definition
+if(PLATFORM_RPI)
+    target_compile_definitions(nuc_display PRIVATE PLATFORM_RPI=1)
+endif()
+
 target_link_libraries(nuc_display
     ${DRM_LIBRARIES}
     ${GBM_LIBRARIES}
     ${EGL_LIBRARIES}
     ${GLESv2_LIBRARIES}
-    ${VA_LIBRARIES}
-    ${VA_DRM_LIBRARIES}
     ${AVFORMAT_LIBRARIES}
     ${AVCODEC_LIBRARIES}
     ${SWSCALE_LIBRARIES}
@@ -111,6 +129,10 @@ target_link_libraries(nuc_display
     Threads::Threads
     m
 )
+
+if(NOT PLATFORM_RPI)
+    target_link_libraries(nuc_display ${VA_LIBRARIES} ${VA_DRM_LIBRARIES})
+endif()
 
 # --- Testing and Coverage ---
 enable_testing()
