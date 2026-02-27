@@ -48,7 +48,12 @@ pkg_check_modules(FREETYPE REQUIRED freetype2)
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 
 # Image Decoders
-pkg_check_modules(LIBJPEG REQUIRED libjpeg)
+pkg_check_modules(LIBJPEG libjpeg)
+if(NOT LIBJPEG_FOUND)
+    # Buildroot's libjpeg doesn't ship a .pc file — find it directly
+    find_library(LIBJPEG_LIBRARIES NAMES jpeg REQUIRED)
+    find_path(LIBJPEG_INCLUDE_DIRS jpeglib.h REQUIRED)
+endif()
 pkg_check_modules(LIBPNG REQUIRED libpng)
 
 # Networking
