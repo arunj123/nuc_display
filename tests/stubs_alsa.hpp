@@ -14,6 +14,7 @@ enum class PcmState {
     SETUP,
     PREPARED,
     RUNNING,
+    PAUSED,
     CLOSED
 };
 

@@ -124,6 +124,16 @@ int snd_pcm_recover(snd_pcm_t *pcm, int err, int silent) {
 size_t snd_pcm_hw_params_sizeof() { return 1024; }
 size_t snd_pcm_sw_params_sizeof() { return 1024; }
 int snd_pcm_resume(snd_pcm_t *pcm) { (void)pcm; return 0; }
+int snd_pcm_pause(snd_pcm_t *pcm, int enable) {
+    (void)pcm; (void)enable;
+    if (enable) {
+        g_alsa_mock.state = PcmState::PAUSED;
+    } else {
+        if (g_alsa_mock.state == PcmState::PAUSED)
+            g_alsa_mock.state = PcmState::RUNNING;
+    }
+    return 0;
+}
 
 // Stubs for other used symbols
 const char *snd_strerror(int errnum) {
