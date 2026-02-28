@@ -385,6 +385,7 @@ void CameraModule::cleanup_v4l2() {
     sw_upload_ = false;
     has_frame_ = false;
     current_buf_index_ = -1;
+    timeout_consecutive_ = 0;
     gl_initialized_ = false;
     device_path_.clear();
     device_name_.clear();
@@ -417,9 +418,26 @@ bool CameraModule::capture_frame() {
         return false;
     }
     if (ret == 0) {
-        // Timeout, but camera is still connected and streaming
-        return true; 
+        // Fast-fail if the device node actually went away (physical disconnect)
+        if (access(device_path_.c_str(), F_OK) != 0) {
+            std::cerr << "[Camera] Device node " << device_path_ << " vanished.\n";
+            return false;
+        }
+        
+        // Timeout: Camera didn't deliver a frame in time.
+        // If this happens continuously, the camera's internal pipeline might be wedged.
+        timeout_consecutive_++;
+        if (timeout_consecutive_ >= 25) { // ~2.5 seconds of pure timeouts
+            std::cerr << "[Camera] Device " << device_path_ 
+                      << " is completely frozen (2.5s timeout). Forcing software reset...\n";
+            timeout_consecutive_ = 0;
+            return false; // Triggers close() and hot-plug retry in main.cpp
+        }
+        return true; // No frame yet, but keep trying
     }
+    
+    // We got an event, reset timeout counter
+    timeout_consecutive_ = 0;
     
     if (pfd.revents & (POLLERR | POLLHUP)) {
         std::cerr << "[Camera] Device disconnected (" << device_path_ << ")\n";
