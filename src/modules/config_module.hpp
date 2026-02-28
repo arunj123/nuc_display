@@ -57,22 +57,37 @@ struct VideoConfig {
     VideoKeysConfig keys;
 };
 
+struct CameraConfig {
+    bool enabled = true;
+    std::string device = "";         // e.g. "/dev/video0", "" = auto-detect
+    int width = 640;
+    int height = 480;
+    int fps = 30;
+    std::string pixel_format = "MJPG"; // MJPG, YUYV, NV12
+    // Destination rect (same convention as VideoConfig)
+    float x = 0.0f, y = 0.0f, w = 1.0f, h = 1.0f;
+    float src_x = 0.0f, src_y = 0.0f, src_w = 1.0f, src_h = 1.0f;
+};
+
 enum class LayoutType {
     Weather,
     Stocks,
     News,
-    Video
+    Video,
+    Camera
 };
 
 struct LayoutEntry {
     LayoutType type;
-    int video_index = -1;  // Only used when type == Video
+    int video_index = -1;   // Only used when type == Video
+    int camera_index = -1;  // Only used when type == Camera
 };
 
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
     std::vector<VideoConfig> videos;
+    std::vector<CameraConfig> cameras;
     std::vector<LayoutEntry> layout;  // Draw order: first = behind, last = on top
     GlobalKeysConfig global_keys;
     StockKeysConfig stock_keys;

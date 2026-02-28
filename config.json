@@ -117,6 +117,24 @@
             "src_h": 1.0
         }
     ],
+    "cameras": [
+        {
+            "enabled": true,
+            "device": "",
+            "fps": 30,
+            "height": 480,
+            "width": 640,
+            "pixel_format": "MJPG",
+            "x": 0.35,
+            "y": 0.35,
+            "w": 0.3,
+            "h": 0.3,
+            "src_x": 0.0,
+            "src_y": 0.0,
+            "src_w": 1.0,
+            "src_h": 1.0
+        }
+    ],
     "news": {
         "enabled": true,
         "sources": [
@@ -149,6 +167,10 @@
         },
         {
             "type": "news"
+        },
+        {
+            "type": "camera",
+            "camera_index": 0
         }
     ]
 }

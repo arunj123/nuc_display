@@ -191,6 +191,22 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     }
     j["videos"] = videos;
 
+    // Cameras
+    nlohmann::json cameras = nlohmann::json::array();
+    for (const auto& c : config.cameras) {
+        nlohmann::json cj;
+        cj["enabled"] = c.enabled;
+        cj["device"] = c.device;
+        cj["width"] = c.width;
+        cj["height"] = c.height;
+        cj["fps"] = c.fps;
+        cj["pixel_format"] = c.pixel_format;
+        cj["x"] = c.x; cj["y"] = c.y; cj["w"] = c.w; cj["h"] = c.h;
+        cj["src_x"] = c.src_x; cj["src_y"] = c.src_y; cj["src_w"] = c.src_w; cj["src_h"] = c.src_h;
+        cameras.push_back(cj);
+    }
+    j["cameras"] = cameras;
+
     // Layout
     nlohmann::json layout_arr = nlohmann::json::array();
     for (const auto& entry : config.layout) {
@@ -202,6 +218,10 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
             case LayoutType::Video:
                 lj["type"] = "video";
                 lj["video_index"] = entry.video_index;
+                break;
+            case LayoutType::Camera:
+                lj["type"] = "camera";
+                lj["camera_index"] = entry.camera_index;
                 break;
         }
         layout_arr.push_back(lj);
@@ -390,6 +410,28 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 needs_save = true;
             }
 
+            // Parse cameras
+            if (j.contains("cameras") && j["cameras"].is_array()) {
+                for (const auto& c_json : j["cameras"]) {
+                    CameraConfig cam;
+                    cam.enabled = c_json.value("enabled", true);
+                    cam.device = c_json.value("device", "");
+                    cam.width = c_json.value("width", 640);
+                    cam.height = c_json.value("height", 480);
+                    cam.fps = c_json.value("fps", 30);
+                    cam.pixel_format = c_json.value("pixel_format", "MJPG");
+                    cam.x = c_json.value("x", 0.0f);
+                    cam.y = c_json.value("y", 0.0f);
+                    cam.w = c_json.value("w", 1.0f);
+                    cam.h = c_json.value("h", 1.0f);
+                    cam.src_x = c_json.value("src_x", 0.0f);
+                    cam.src_y = c_json.value("src_y", 0.0f);
+                    cam.src_w = c_json.value("src_w", 1.0f);
+                    cam.src_h = c_json.value("src_h", 1.0f);
+                    config.cameras.push_back(cam);
+                }
+            }
+
             // Parse layout
             if (j.contains("layout") && j["layout"].is_array()) {
                 for (const auto& entry : j["layout"]) {
@@ -405,6 +447,9 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                     } else if (type_str == "video") {
                         le.type = LayoutType::Video;
                         le.video_index = entry.value("video_index", 0);
+                    } else if (type_str == "camera") {
+                        le.type = LayoutType::Camera;
+                        le.camera_index = entry.value("camera_index", 0);
                     } else {
                         std::cerr << "[Config] Warning: Unknown layout type '" << type_str << "'. Skipping.\n";
                         continue;
@@ -419,7 +464,10 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 config.layout.push_back({LayoutType::Stocks, -1});
                 config.layout.push_back({LayoutType::News, -1});
                 for (int i = 0; i < (int)config.videos.size(); ++i) {
-                    config.layout.push_back({LayoutType::Video, i});
+                    config.layout.push_back({LayoutType::Video, i, -1});
+                }
+                for (int i = 0; i < (int)config.cameras.size(); ++i) {
+                    config.layout.push_back({LayoutType::Camera, -1, i});
                 }
             }
             

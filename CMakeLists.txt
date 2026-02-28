@@ -104,6 +104,7 @@ set(SRC_FILES
     src/modules/screenshot_module.cpp
     src/modules/news_module.cpp
     src/modules/input_module.cpp
+    src/modules/camera_module.cpp
     src/modules/performance_monitor.cpp
 )
 

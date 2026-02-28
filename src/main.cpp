@@ -23,6 +23,7 @@
 #include "modules/video_decoder.hpp"
 #include "modules/container_reader.hpp"
 #include "modules/input_module.hpp"
+#include "modules/camera_module.hpp"
 #include "modules/config_validator.hpp"
 #include "modules/performance_monitor.hpp"
 
@@ -161,6 +162,24 @@ int main(int argc, char** argv) {
             std::cerr << "[Core] No videos defined for a configured video region.\n";
             video_started.push_back(false);
         }
+    }
+
+    // Camera Modules (V4L2) - Multi-instance support with hot-plug
+    std::vector<std::unique_ptr<modules::CameraModule>> cameras;
+    std::vector<modules::CameraConfig> camera_configs_copy; // Keep config copies for hot-plug retry
+    std::vector<std::chrono::steady_clock::time_point> camera_last_retry;
+    for (const auto& c_config : app_config.cameras) {
+        if (!c_config.enabled) continue;
+        auto cam = std::make_unique<modules::CameraModule>();
+        if (cam->open(c_config)) {
+            std::cout << "[Core] Camera opened: " << cam->device_name() 
+                      << " (" << cam->device_path() << ")\n";
+        } else {
+            std::cout << "[Core] Camera not available yet (will retry via hot-plug).\n";
+        }
+        cameras.push_back(std::move(cam));
+        camera_configs_copy.push_back(c_config);
+        camera_last_retry.push_back(std::chrono::steady_clock::now());
     }
 
     // Container Reader
@@ -468,6 +487,39 @@ int main(int argc, char** argv) {
                         if (!playing) {
                             if (task.valid()) task.get();
                             decoder->next_video();
+                        }
+                    }
+                    break;
+                }
+
+                case modules::LayoutType::Camera: {
+                    int ci = layer.camera_index;
+                    if (ci < 0 || ci >= (int)cameras.size()) break;
+
+                    auto& cam = cameras[ci];
+                    
+                    if (cam->is_open()) {
+                        bool alive = cam->capture_frame();
+                        if (!alive) {
+                            std::cerr << "[Core] Camera " << ci << " disconnected. Will retry.\n";
+                            cam->close();
+                            camera_last_retry[ci] = now;
+                        } else if (!headless_mode) {
+                            auto& c_config = camera_configs_copy[ci];
+                            cam->render(*renderer, display->egl_display(),
+                                        c_config.src_x, c_config.src_y,
+                                        c_config.src_w, c_config.src_h,
+                                        c_config.x, c_config.y,
+                                        c_config.w, c_config.h);
+                        }
+                    } else {
+                        // Hot-plug retry every 5s
+                        if (std::chrono::duration_cast<std::chrono::seconds>(now - camera_last_retry[ci]).count() >= 5) {
+                            if (cam->open(camera_configs_copy[ci])) {
+                                std::cout << "[Core] Camera " << ci << " reconnected: " 
+                                          << cam->device_name() << "\n";
+                            }
+                            camera_last_retry[ci] = now;
                         }
                     }
                     break;
