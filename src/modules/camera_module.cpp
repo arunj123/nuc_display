@@ -212,16 +212,20 @@ bool CameraModule::init_v4l2(const std::string& device, int w, int h, int fps, u
         std::cerr << "[Camera] Failed to set format " << fourcc_to_string(fourcc) 
                   << " at " << w << "x" << h << " on " << device << "\n";
                   
-        // Print supported formats to help debugging
-        std::cerr << "[Camera] Supported formats for " << device << ":\n";
-        struct v4l2_fmtdesc fmtdesc;
-        memset(&fmtdesc, 0, sizeof(fmtdesc));
-        fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        fmtdesc.index = 0;
-        while (ioctl(v4l2_fd_, VIDIOC_ENUM_FMT, &fmtdesc) == 0) {
-            std::cerr << "  - " << fmtdesc.description << " (" 
-                      << fourcc_to_string(fmtdesc.pixelformat) << ")\n";
-            fmtdesc.index++;
+        // Print supported formats to help debugging (only once per failure to avoid spam)
+        static bool format_printed = false;
+        if (!format_printed) {
+            std::cerr << "[Camera] Supported formats for " << device << ":\n";
+            struct v4l2_fmtdesc fmtdesc;
+            memset(&fmtdesc, 0, sizeof(fmtdesc));
+            fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            fmtdesc.index = 0;
+            while (ioctl(v4l2_fd_, VIDIOC_ENUM_FMT, &fmtdesc) == 0) {
+                std::cerr << "  - " << fmtdesc.description << " (" 
+                          << fourcc_to_string(fmtdesc.pixelformat) << ")\n";
+                fmtdesc.index++;
+            }
+            format_printed = true;
         }
         
         cleanup_v4l2();
@@ -407,10 +411,14 @@ bool CameraModule::capture_frame() {
     pfd.events = POLLIN;
     pfd.revents = 0;
     
-    int ret = poll(&pfd, 1, 0); // Non-blocking
+    int ret = poll(&pfd, 1, 100); // 100ms timeout
     if (ret < 0) {
         std::cerr << "[Camera] poll() error: " << strerror(errno) << "\n";
         return false;
+    }
+    if (ret == 0) {
+        // Timeout, but camera is still connected and streaming
+        return true; 
     }
     
     if (pfd.revents & (POLLERR | POLLHUP)) {
