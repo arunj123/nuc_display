@@ -198,9 +198,32 @@ bool CameraModule::init_v4l2(const std::string& device, int w, int h, int fps, u
         capture_fourcc_ = fmt.fmt.pix.pixelformat;
         capture_width_ = fmt.fmt.pix.width;
         capture_height_ = fmt.fmt.pix.height;
+        
+        if (capture_width_ != w || capture_height_ != h) {
+            std::cerr << "[Camera] Warning: Kernel adjusted resolution for " << device 
+                      << " from " << w << "x" << h << " to " 
+                      << capture_width_ << "x" << capture_height_ << "\n";
+        }
+        if (capture_fourcc_ != fourcc) {
+            std::cerr << "[Camera] Warning: Kernel ignored requested format " << fourcc_to_string(fourcc)
+                      << " and chose " << fourcc_to_string(capture_fourcc_) << "\n";
+        }
     } else {
         std::cerr << "[Camera] Failed to set format " << fourcc_to_string(fourcc) 
                   << " at " << w << "x" << h << " on " << device << "\n";
+                  
+        // Print supported formats to help debugging
+        std::cerr << "[Camera] Supported formats for " << device << ":\n";
+        struct v4l2_fmtdesc fmtdesc;
+        memset(&fmtdesc, 0, sizeof(fmtdesc));
+        fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        fmtdesc.index = 0;
+        while (ioctl(v4l2_fd_, VIDIOC_ENUM_FMT, &fmtdesc) == 0) {
+            std::cerr << "  - " << fmtdesc.description << " (" 
+                      << fourcc_to_string(fmtdesc.pixelformat) << ")\n";
+            fmtdesc.index++;
+        }
+        
         cleanup_v4l2();
         return false;
     }

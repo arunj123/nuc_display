@@ -120,13 +120,29 @@
     "cameras": [
         {
             "enabled": true,
-            "device": "",
+            "device": "/dev/video0",
             "fps": 30,
             "height": 480,
             "width": 640,
             "pixel_format": "MJPG",
             "x": 0.35,
             "y": 0.35,
+            "w": 0.3,
+            "h": 0.3,
+            "src_x": 0.0,
+            "src_y": 0.0,
+            "src_w": 1.0,
+            "src_h": 1.0
+        },
+        {
+            "enabled": true,
+            "device": "/dev/video2",
+            "fps": 30,
+            "height": 480,
+            "width": 640,
+            "pixel_format": "MJPG",
+            "x": 0.35,
+            "y": 0.67,
             "w": 0.3,
             "h": 0.3,
             "src_x": 0.0,
@@ -171,6 +187,10 @@
         {
             "type": "camera",
             "camera_index": 0
+        },
+        {
+            "type": "camera",
+            "camera_index": 1
         }
     ]
 }
