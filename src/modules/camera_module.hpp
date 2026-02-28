@@ -74,6 +74,7 @@ private:
     // Frame state
     bool has_frame_ = false;
     int current_buf_index_ = -1;     // Currently dequeued buffer index for DMA-BUF
+    int timeout_consecutive_ = 0;    // Tracks wedged camera state
     
     // EGL/GL state (same pattern as VideoDecoder)
     EGLDisplay egl_display_ = EGL_NO_DISPLAY;
