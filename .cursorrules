@@ -39,3 +39,55 @@ You are assisting in the development of a bare-metal, high-performance Linux gra
 - Minimalistic and readable code; avoid unnecessary "black box" abstractions.
 - Follow modern C++ best practices (Core Guidelines).
 - Use `std::expected` (C++23) or similar for robust error handling instead of exceptions where performance is critical.
+
+## 7. Agent Workflow, Rules, & Skills
+When operating as an AI agent in this repository, you must follow these specific workflows and validation steps:
+
+### A. Build Commands
+- **Standard Debug Build (Recommended for tests & development):**
+  ```bash
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+  cmake --build build --config Debug
+  ```
+- **Raspberry Pi Cross-Build:**
+  ```bash
+  cmake -S . -B build_rpi -DPLATFORM_RPI=ON -DCMAKE_BUILD_TYPE=Debug
+  cmake --build build_rpi --config Debug
+  ```
+
+### B. Test Execution
+- **Run logic tests (Mocks, no hardware needed):**
+  ```bash
+  cd build && ctest --output-on-failure
+  ```
+- **Run individual tests directly:**
+  - Logic/Module tests: `./build/tests/test_modules`
+  - Video decoder tests: `./build/tests/test_video_decoder`
+  - Integration tests (requires physical NUC/root): `sudo ./build/tests/test_integration`
+
+### C. Memory Leak Verification
+Always verify that C++ pointer/resource management does not leak memory using Valgrind:
+```bash
+valgrind --leak-check=full --error-exitcode=1 ./build/tests/test_video_decoder
+valgrind --leak-check=full --error-exitcode=1 ./build/tests/test_modules
+```
+
+### D. Systemd Service Control
+If running on the target Intel NUC:
+- **Stop local system service before running integration tests or manual builds:**
+  ```bash
+  sudo systemctl stop nuc_display.service
+  ```
+- **Restart service and view logs:**
+  ```bash
+  sudo systemctl restart nuc_display.service
+  journalctl -u nuc_display.service -n 100 --no-pager
+  ```
+
+### E. Manual Visual Verification
+To verify rendering without a display, trigger a headless screenshot:
+```bash
+./build/screenshot_tool
+```
+This saves `manual_screenshot.png` to the workspace directory.
+
