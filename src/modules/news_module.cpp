@@ -73,47 +73,49 @@ void NewsModule::update_headlines() {
             
             // Extract <title>
             auto title_start = item_block.find("<title>");
-            auto title_end = item_block.find("</title>");
-            if (title_start != std::string::npos && title_end != std::string::npos) {
+            if (title_start != std::string::npos) {
                 title_start += 7;
-                std::string raw_title = item_block.substr(title_start, title_end - title_start);
-                
-                // Content can be wrapped in <![CDATA[ ]]>
-                if (raw_title.find("<![CDATA[") == 0) {
-                    auto cdata_end = raw_title.find("]]>");
-                    if (cdata_end != std::string::npos) {
-                        raw_title = raw_title.substr(9, cdata_end - 9);
-                    }
-                }
-                
-                // Basic HTML entity decoding
-                std::string clean;
-                for (size_t i = 0; i < raw_title.length(); i++) {
-                    if (raw_title[i] == '&') {
-                        auto semi = raw_title.find(';', i);
-                        if (semi != std::string::npos) {
-                            std::string entity = raw_title.substr(i, semi - i + 1);
-                            if (entity == "&amp;") clean += '&';
-                            else if (entity == "&lt;") clean += '<';
-                            else if (entity == "&gt;") clean += '>';
-                            else if (entity == "&apos;" || entity == "&#39;") clean += '\'';
-                            else if (entity == "&quot;") clean += '"';
-                            else clean += entity;
-                            i = semi;
-                            continue;
+                auto title_end = item_block.find("</title>", title_start);
+                if (title_end != std::string::npos && title_end >= title_start) {
+                    std::string raw_title = item_block.substr(title_start, title_end - title_start);
+                    
+                    // Content can be wrapped in <![CDATA[ ]]>
+                    if (raw_title.find("<![CDATA[") == 0) {
+                        auto cdata_end = raw_title.find("]]>");
+                        if (cdata_end != std::string::npos && cdata_end >= 9) {
+                            raw_title = raw_title.substr(9, cdata_end - 9);
                         }
                     }
-                    clean += raw_title[i];
+                    
+                    // Basic HTML entity decoding
+                    std::string clean;
+                    for (size_t i = 0; i < raw_title.length(); i++) {
+                        if (raw_title[i] == '&') {
+                            auto semi = raw_title.find(';', i);
+                            if (semi != std::string::npos) {
+                                std::string entity = raw_title.substr(i, semi - i + 1);
+                                if (entity == "&amp;") clean += '&';
+                                else if (entity == "&lt;") clean += '<';
+                                else if (entity == "&gt;") clean += '>';
+                                else if (entity == "&apos;" || entity == "&#39;") clean += '\'';
+                                else if (entity == "&quot;") clean += '"';
+                                else clean += entity;
+                                i = semi;
+                                continue;
+                            }
+                        }
+                        clean += raw_title[i];
+                    }
+                    item.title = clean;
                 }
-                item.title = clean;
             }
             
             // Extract <source> or use the domain from URL as fallback
             auto src_start = item_block.find("<source");
-            auto src_end = item_block.find("</source>");
-            if (src_start != std::string::npos && src_end != std::string::npos) {
+            if (src_start != std::string::npos) {
                 auto tag_end = item_block.find(">", src_start);
-                if (tag_end != std::string::npos && tag_end < src_end) {
+                auto src_end = item_block.find("</source>", src_start);
+                if (tag_end != std::string::npos && src_end != std::string::npos && tag_end < src_end) {
                     item.source = item_block.substr(tag_end + 1, src_end - tag_end - 1);
                 }
             }

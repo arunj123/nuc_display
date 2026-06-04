@@ -262,6 +262,8 @@ void StockModule::prev_chart() {
 }
 
 void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, double time_sec) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (manual_mode_) {
         // Resolve sentinel timers on first render
         if (last_switch_time_ < 0.0) last_switch_time_ = time_sec;
@@ -276,6 +278,11 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     }
 
     if (stock_data_.empty()) return;
+
+    // Bounds check current_index_
+    if (current_index_ >= stock_data_.size()) {
+        current_index_ = 0;
+    }
 
     double display_duration_per_chart = 3.0; // 3 seconds per timeframe
     size_t active_chart_idx = 0;
@@ -292,6 +299,11 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
         }
     }
 
+    // Re-verify current_index_ in case it changed above
+    if (current_index_ >= stock_data_.size()) {
+        current_index_ = 0;
+    }
+
     const auto& data = stock_data_[current_index_];
     
     if (data.charts.empty()) return;
@@ -300,6 +312,14 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
 
     if (!manual_mode_) {
         active_chart_idx = static_cast<size_t>(local_time / display_duration_per_chart) % data.charts.size();
+    }
+
+    // Bounds check active_chart_idx and current_chart_index_
+    if (active_chart_idx >= data.charts.size()) {
+        active_chart_idx = 0;
+    }
+    if (current_chart_index_ >= data.charts.size()) {
+        current_chart_index_ = 0;
     }
     
     double chart_local_time = std::fmod(local_time, display_duration_per_chart);
@@ -335,7 +355,6 @@ void StockModule::render(core::Renderer& renderer, TextRenderer& text_renderer, 
     uint32_t tex_id = 0;
 
     {
-        std::lock_guard<std::mutex> lock(mutex_);
         if (icon_textures_.count(data.symbol)) {
             tex_id = icon_textures_[data.symbol];
             has_icon = (tex_id > 0);

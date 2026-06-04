@@ -72,15 +72,19 @@ valgrind --leak-check=full --error-exitcode=1 ./build/tests/test_video_decoder
 valgrind --leak-check=full --error-exitcode=1 ./build/tests/test_modules
 ```
 
-### D. Systemd Service Control
+### D. Systemd Service Control & Resource Management
 If running on the target Intel NUC:
-- **Stop local system service before running integration tests or manual builds:**
+- **Mandatory Service Stop before builds or tests:** You **must** stop the running `nuc_display.service` before running integration tests or manual builds. The service holds exclusive locks on hardware resources (DRM master, VA-API hardware context, and ALSA audio device). Failing to stop it will cause builds or tests to fail due to resource conflicts:
   ```bash
   sudo systemctl stop nuc_display.service
   ```
-- **Restart service and view logs:**
+- **Mandatory Service Start after testing:** Once your local testing session is finished, you **must** start the service back up to restore the dashboard view:
   ```bash
-  sudo systemctl restart nuc_display.service
+  sudo systemctl start nuc_display.service
+  ```
+  *(Note: Actual production deployments are performed automatically by the CI/CD job; starting the service here is solely to restore the device to its normal running state after testing.)*
+- **View logs:**
+  ```bash
   journalctl -u nuc_display.service -n 100 --no-pager
   ```
 
