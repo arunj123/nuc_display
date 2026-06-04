@@ -190,7 +190,7 @@ const char* weather_fragment_shader = R"(
                 }
                 
                 float a = 1.0 - smoothstep(0.0, blur, dist);
-                float mask = (1.0 - smoothstep(-0.15, -0.05, uv.y)) * smoothstep(-0.4, -0.2, uv.y);
+                float mask = (1.0 - smoothstep(-0.25, -0.15, uv.y)) * smoothstep(-0.9, -0.7, uv.y);
                 a *= mask;
                 
                 col = mix(col, p_col, a);
