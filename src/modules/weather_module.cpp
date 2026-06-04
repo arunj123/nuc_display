@@ -219,9 +219,9 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
 
 
     // =========================================================
-    // ROW 4: Description, Warnings, Tip  (y = 0.55 - 0.68)
+    // ROW 4: Description, Warnings, Tip  (y = 0.58 - 0.71)
     // =========================================================
-    float text_y = 0.55f;
+    float text_y = 0.58f;
     text_renderer.set_pixel_size(0, 26);
     auto desc_lines = wrap_text(data.description, 52);
     for (const auto& line : desc_lines) {
