@@ -50,7 +50,7 @@
             "audio_device": "default",
             "audio_enabled": true,
             "enabled": true,
-            "start_trigger": "auto",
+            "start_trigger": "p",
             "keys": {
                 "next": "right",
                 "prev": "left",
@@ -89,6 +89,7 @@
         {
             "audio_enabled": false,
             "enabled": true,
+            "start_trigger": "p",
             "playlists": [
                 "tests/samples/bbb_sunflower_1080p_30fps_normal_audio.mp4"
             ],
@@ -104,6 +105,7 @@
         {
             "audio_enabled": false,
             "enabled": true,
+            "start_trigger": "p",
             "playlists": [
                 "tests/sample_uhd_hevc_with_audio.mp4"
             ],
