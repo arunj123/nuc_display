@@ -60,9 +60,13 @@ bool is_valid_key_name(const std::string& name) {
 
 ConfigModule::ConfigModule() {
     curl_global_init(CURL_GLOBAL_ALL);
+    curl_handle_ = curl_easy_init();
 }
 
 ConfigModule::~ConfigModule() {
+    if (curl_handle_) {
+        curl_easy_cleanup((CURL*)curl_handle_);
+    }
     curl_global_cleanup();
 }
 
@@ -72,12 +76,16 @@ size_t ConfigModule::WriteCallback(void* contents, size_t size, size_t nmemb, vo
 }
 
 std::expected<GeocodeResult, ConfigError> ConfigModule::geocode_address(const std::string& address) {
-    CURL* curl;
+    CURL* curl = (CURL*)curl_handle_;
+    if (!curl) {
+        curl = curl_easy_init();
+        curl_handle_ = curl;
+    }
+    if (!curl) return std::unexpected(ConfigError::GeocodeNetworkError);
+
+    curl_easy_reset(curl);
     CURLcode res;
     std::string readBuffer;
-
-    curl = curl_easy_init();
-    if (!curl) return std::unexpected(ConfigError::GeocodeNetworkError);
 
     char* encoded_addr = curl_easy_escape(curl, address.c_str(), address.length());
     std::string url = "https://geocoding-api.open-meteo.com/v1/search?name=" + std::string(encoded_addr) + "&count=1&language=en&format=json";
@@ -91,7 +99,6 @@ std::expected<GeocodeResult, ConfigError> ConfigModule::geocode_address(const st
 
     std::cout << "Geocoding address: " << address << "...\n";
     res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
         std::cerr << "Geocode CURL Error: " << curl_easy_strerror(res) << "\n";

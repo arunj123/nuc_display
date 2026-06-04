@@ -228,6 +228,11 @@ Renderer::Renderer() : program_(0), position_loc_(0), tex_coord_loc_(0), sampler
 
 Renderer::~Renderer() {
     if (program_) glDeleteProgram(program_);
+    if (weather_program_) glDeleteProgram(weather_program_);
+    if (white_texture_) {
+        GLuint tid = white_texture_;
+        glDeleteTextures(1, &tid);
+    }
     if (vbo_) glDeleteBuffers(1, &vbo_);
 }
 

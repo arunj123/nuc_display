@@ -119,6 +119,8 @@ private:
     
     // Save to disk
     void save_config(const AppConfig& config, const std::string& filepath);
+
+    void* curl_handle_ = nullptr; // Using void* to avoid exposing curl.h to all include files
 };
 
 } // namespace nuc_display::modules

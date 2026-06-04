@@ -16,20 +16,15 @@ class VideoDecoderTest : public ::testing::Test {
 protected:
     void SetUp() override {
         g_alsa_mock.reset();
-        
-        // Ensure a dummy video exists for testing
-        test_video_path_ = "tests/dummy_video.mp4";
-        if (!std::filesystem::exists("tests")) {
-            std::filesystem::create_directory("tests");
-        }
-        
-        // We actually need a real or parseable media file for FFmpeg to open.
-        // We'll use a very small synthetic video generated via ffmpeg if possible,
-        // or just test the logic that doesn't strictly depend on ffmpeg decoding.
-        // Wait, opening a file triggers real FFmpeg. We must either have a real file
-        // or we just test the math logic. We can do a quick system call to create a 1s black video.
-        if (!std::filesystem::exists(test_video_path_)) {
-            system(("ffmpeg -f lavfi -i color=c=black:s=320x240:d=5.0 -f lavfi -i anullsrc=r=48000:cl=stereo -c:v libx264 -c:a aac -shortest " + test_video_path_ + " -y >/dev/null 2>&1").c_str());
+        // Dynamically find sample_with_audio.mp4 depending on CTest working directory
+        if (std::filesystem::exists("tests/sample_with_audio.mp4")) {
+            test_video_path_ = "tests/sample_with_audio.mp4";
+        } else if (std::filesystem::exists("sample_with_audio.mp4")) {
+            test_video_path_ = "sample_with_audio.mp4";
+        } else if (std::filesystem::exists("../tests/sample_with_audio.mp4")) {
+            test_video_path_ = "../tests/sample_with_audio.mp4";
+        } else {
+            test_video_path_ = "tests/sample_with_audio.mp4"; // fallback
         }
     }
 

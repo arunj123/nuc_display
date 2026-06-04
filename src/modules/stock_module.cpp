@@ -17,7 +17,13 @@ namespace nuc_display::modules {
 StockModule::StockModule() {}
 
 StockModule::~StockModule() {
-    // Textures live for the app duration — no renderer ref available here
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [symbol, tex_id] : icon_textures_) {
+        if (tex_id > 0) {
+            GLuint tid = tex_id;
+            glDeleteTextures(1, &tid);
+        }
+    }
 }
 
 void StockModule::add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol) {
