@@ -40,6 +40,26 @@ void sigusr1_handler(int) {
     g_screenshot_requested = true;
 }
 
+static std::string format_uptime(double seconds_double) {
+    long long total_seconds = static_cast<long long>(seconds_double);
+    long long days = total_seconds / 86400;
+    long long hours = (total_seconds % 86400) / 3600;
+    long long minutes = (total_seconds % 3600) / 60;
+    long long seconds = total_seconds % 60;
+
+    std::stringstream ss;
+    if (days > 0) {
+        ss << days << "d " << hours << "h";
+    } else if (hours > 0) {
+        ss << hours << "h " << minutes << "m";
+    } else if (minutes > 0) {
+        ss << minutes << "m " << seconds << "s";
+    } else {
+        ss << seconds << "s";
+    }
+    return ss.str();
+}
+
 int main(int argc, char** argv) {
     std::string config_path = "config.json";
     for (int i = 1; i < argc; ++i) {
@@ -399,7 +419,7 @@ int main(int argc, char** argv) {
             }
             
             std::stringstream date_ss;
-            date_ss << std::put_time(parts, "%a, %b %d");
+            date_ss << std::put_time(parts, "%a, %b %d") << " | Up: " << format_uptime(render_time_sec);
             text_renderer->set_pixel_size(0, 28);
             if (auto glyphs = text_renderer->shape_text(date_ss.str())) {
                 renderer->draw_text(glyphs.value(), 0.03f, 0.15f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f);

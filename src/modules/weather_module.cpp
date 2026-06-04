@@ -28,6 +28,26 @@ static std::vector<std::string> wrap_text(const std::string& text, size_t max_ch
     return lines;
 }
 
+static std::string format_uptime(double seconds_double) {
+    long long total_seconds = static_cast<long long>(seconds_double);
+    long long days = total_seconds / 86400;
+    long long hours = (total_seconds % 86400) / 3600;
+    long long minutes = (total_seconds % 3600) / 60;
+    long long seconds = total_seconds % 60;
+
+    std::stringstream ss;
+    if (days > 0) {
+        ss << days << "d " << hours << "h";
+    } else if (hours > 0) {
+        ss << hours << "h " << minutes << "m";
+    } else if (minutes > 0) {
+        ss << minutes << "m " << seconds << "s";
+    } else {
+        ss << seconds << "s";
+    }
+    return ss.str();
+}
+
 WeatherModule::WeatherModule() {}
 
 WeatherModule::~WeatherModule() {
@@ -184,11 +204,12 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
     // =========================================================
     // ROW 2: Date & City (centered)    (y = 0.13 - 0.18)
     // =========================================================
-    char date_buf[64];
+    char date_buf[128];
     char day_abbr[4], month_abbr[4];
     strftime(day_abbr, sizeof(day_abbr), "%a", parts);
     strftime(month_abbr, sizeof(month_abbr), "%b", parts);
-    snprintf(date_buf, sizeof(date_buf), "%s, %s %d | %s", day_abbr, month_abbr, parts->tm_mday, data.city.c_str());
+    std::string uptime_str = format_uptime(time_sec);
+    snprintf(date_buf, sizeof(date_buf), "%s, %s %d | %s | Up: %s", day_abbr, month_abbr, parts->tm_mday, data.city.c_str(), uptime_str.c_str());
     text_renderer.set_pixel_size(0, 24);
     if (auto glyphs = text_renderer.shape_text(date_buf)) {
         float date_w = 0.0f;
