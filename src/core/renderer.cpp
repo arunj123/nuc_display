@@ -33,7 +33,11 @@ const char* fragment_shader_source = R"(
 )";
 
 const char* weather_fragment_shader = R"(
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+    precision highp float;
+    #else
     precision mediump float;
+    #endif
     varying vec2 v_texCoord;
     uniform float u_time;
     uniform int u_weather_code;
