@@ -60,6 +60,29 @@ static std::string format_uptime(double seconds_double) {
     return ss.str();
 }
 
+static int parse_time_to_minutes(const std::string& time_str) {
+    if (time_str.length() != 5 || time_str[2] != ':') return -1;
+    try {
+        int h = std::stoi(time_str.substr(0, 2));
+        int m = std::stoi(time_str.substr(3, 2));
+        if (h < 0 || h > 23 || m < 0 || m > 59) return -1;
+        return h * 60 + m;
+    } catch (...) {
+        return -1;
+    }
+}
+
+static bool is_in_power_save_range(int current_min, int start_min, int end_min) {
+    if (start_min == end_min) {
+        return false;
+    }
+    if (start_min < end_min) {
+        return current_min >= start_min && current_min < end_min;
+    } else {
+        return current_min >= start_min || current_min < end_min;
+    }
+}
+
 int main(int argc, char** argv) {
     std::string config_path = "config.json";
     for (int i = 1; i < argc; ++i) {
@@ -246,6 +269,7 @@ int main(int argc, char** argv) {
     // Multi-video background tasks
     std::vector<std::future<std::expected<void, modules::MediaError>>> video_process_tasks(video_decoders.size());
     bool videos_hidden = false;
+    bool screen_blanked = false;
     auto last_config_error_log = std::chrono::steady_clock::now();
 
     std::cout << "--- Starting main loop ---" << std::endl;
@@ -253,6 +277,49 @@ int main(int argc, char** argv) {
     while (g_running) {
         auto now_p = std::chrono::steady_clock::now();
         double render_time_sec = std::chrono::duration<double>(now_p - program_start_time).count();
+
+        // --- CHECK POWER SAVE SCHEDULE ---
+        bool should_blank = false;
+        if (app_config.power_save.enabled) {
+            auto wall_now = std::chrono::system_clock::now();
+            std::time_t now_c = std::chrono::system_clock::to_time_t(wall_now);
+            struct tm *parts = std::localtime(&now_c);
+            int current_min = parts->tm_hour * 60 + parts->tm_min;
+            
+            int start_min = parse_time_to_minutes(app_config.power_save.start_time);
+            int end_min = parse_time_to_minutes(app_config.power_save.end_time);
+            
+            if (start_min >= 0 && end_min >= 0) {
+                should_blank = is_in_power_save_range(current_min, start_min, end_min);
+            }
+        }
+        
+        if (should_blank) {
+            if (!screen_blanked) {
+                std::cout << "[Main] Schedule matches power-save window. Blanking display.\n";
+                if (!headless_mode && display) {
+                    display->set_power_save(true);
+                }
+                for (auto& decoder : video_decoders) {
+                    decoder->set_paused(true, render_time_sec);
+                }
+                screen_blanked = true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            while (auto event = input_module->pop_event()) { (void)event; }
+            continue;
+        } else {
+            if (screen_blanked) {
+                std::cout << "[Main] Leaving power-save window. Restoring display.\n";
+                if (!headless_mode && display) {
+                    display->set_power_save(false);
+                }
+                for (auto& decoder : video_decoders) {
+                    decoder->set_paused(videos_hidden, render_time_sec);
+                }
+                screen_blanked = false;
+            }
+        }
 
         // --- POLL INPUT EVENTS ---
         while (auto event = input_module->pop_event()) {

@@ -77,6 +77,27 @@ std::vector<std::string> ConfigValidator::validate(const AppConfig& config) {
         if (v.keys.skip_backward) check_key(*v.keys.skip_backward, ctx + ".keys.skip_backward");
     }
 
+    // 5. Power save validation
+    if (config.power_save.enabled) {
+        auto validate_time = [&](const std::string& time_str, const std::string& name) {
+            if (time_str.length() != 5 || time_str[2] != ':') {
+                errors.push_back("power_save." + name + " must be in 'HH:MM' format: " + time_str);
+                return;
+            }
+            try {
+                int h = std::stoi(time_str.substr(0, 2));
+                int m = std::stoi(time_str.substr(3, 2));
+                if (h < 0 || h > 23 || m < 0 || m > 59) {
+                    errors.push_back("power_save." + name + " contains invalid time: " + time_str);
+                }
+            } catch (...) {
+                errors.push_back("power_save." + name + " is not a valid time: " + time_str);
+            }
+        };
+        validate_time(config.power_save.start_time, "start_time");
+        validate_time(config.power_save.end_time, "end_time");
+    }
+
     return errors;
 }
 

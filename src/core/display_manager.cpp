@@ -78,6 +78,28 @@ void DisplayManager::shutdown_display() {
     }
 }
 
+void DisplayManager::set_power_save(bool enable) {
+    if (enable) {
+        if (!display_blanked_) {
+            std::cout << "[Display] Entering power save: blanking screen.\n";
+            if (drm_fd_ >= 0 && crtc_id_ > 0) {
+                drmModeSetCrtc(drm_fd_, crtc_id_, 0, 0, 0, nullptr, 0, nullptr);
+            }
+            display_blanked_ = true;
+        }
+    } else {
+        if (display_blanked_) {
+            std::cout << "[Display] Leaving power save: restoring screen.\n";
+            if (drm_fd_ >= 0 && crtc_id_ > 0 && current_fb_ > 0) {
+                if (drmModeSetCrtc(drm_fd_, crtc_id_, current_fb_, 0, 0, &drm_connector_->connector_id, 1, &mode_)) {
+                    std::cerr << "[Display] Failed to restore CRTC: " << std::strerror(errno) << "\n";
+                }
+            }
+            display_blanked_ = false;
+        }
+    }
+}
+
 std::expected<void, DisplayError> DisplayManager::init_drm() {
     for (int i = 0; i < 10; i++) {
         char path[32];

@@ -275,6 +275,29 @@ TEST_F(ConfigModuleTest, ParseStockKeys) {
     EXPECT_NE(*result->stock_keys.next_chart, *result->stock_keys.prev_chart);
 }
 
+TEST_F(ConfigModuleTest, ParsePowerSaveConfig) {
+    nlohmann::json j = {
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", nlohmann::json::array()},
+        {"videos", nlohmann::json::array()},
+        {"power_save", {
+            {"enabled", true},
+            {"start_time", "22:15"},
+            {"end_time", "06:45"}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->power_save.enabled);
+    EXPECT_EQ(result->power_save.start_time, "22:15");
+    EXPECT_EQ(result->power_save.end_time, "06:45");
+}
+
 TEST(ConfigValidatorTest, StockKeyDuplicateWithGlobal) {
     AppConfig config;
     config.location = {"Test", 0.0f, 0.0f};
@@ -297,6 +320,25 @@ TEST(ConfigValidatorTest, StockKeyDuplicateAmongStockKeys) {
     auto errors = ConfigValidator::validate(config);
     ASSERT_GE(errors.size(), 1u);
     EXPECT_NE(errors[0].find("Duplicate key binding"), std::string::npos);
+}
+
+TEST(ConfigValidatorTest, PowerSaveInvalidTime) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.power_save.enabled = true;
+    config.power_save.start_time = "25:00";
+    config.power_save.end_time = "07:99";
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 2u);
+    EXPECT_NE(errors[0].find("contains invalid time"), std::string::npos);
+    EXPECT_NE(errors[1].find("contains invalid time"), std::string::npos);
+
+    config.power_save.start_time = "23:0";
+    errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("must be in 'HH:MM' format"), std::string::npos);
 }
 
 TEST(StockModuleTest, ManualCyclingLogic) {

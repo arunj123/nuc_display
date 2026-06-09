@@ -48,6 +48,8 @@ public:
     bool page_flip();
     void process_drm_events(int timeout_ms);
     void shutdown_display();
+    void set_power_save(bool enable);
+    bool is_blanked() const { return display_blanked_; }
 
     // Accessors
     int drm_fd() const { return drm_fd_; }
@@ -88,6 +90,8 @@ private:
     EGLConfig egl_config_ = nullptr;
     EGLContext egl_context_ = EGL_NO_CONTEXT;
     EGLSurface egl_surface_ = EGL_NO_SURFACE;
+
+    bool display_blanked_ = false;
 };
 
 } // namespace nuc_display::core

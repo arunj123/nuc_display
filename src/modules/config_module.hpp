@@ -83,6 +83,12 @@ struct LayoutEntry {
     int camera_index = -1;  // Only used when type == Camera
 };
 
+struct PowerSaveConfig {
+    bool enabled = false;
+    std::string start_time = "23:00";
+    std::string end_time = "07:00";
+};
+
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
@@ -91,6 +97,7 @@ struct AppConfig {
     std::vector<LayoutEntry> layout;  // Draw order: first = behind, last = on top
     GlobalKeysConfig global_keys;
     StockKeysConfig stock_keys;
+    PowerSaveConfig power_save;
 };
 
 // Key name to Linux KEY_* code mapping

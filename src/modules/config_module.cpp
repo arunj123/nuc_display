@@ -233,7 +233,11 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
         }
         layout_arr.push_back(lj);
     }
-    j["layout"] = layout_arr;
+    nlohmann::json ps;
+    ps["enabled"] = config.power_save.enabled;
+    ps["start_time"] = config.power_save.start_time;
+    ps["end_time"] = config.power_save.end_time;
+    j["power_save"] = ps;
 
     std::ofstream out(filepath);
     if (out.is_open()) {
@@ -286,6 +290,11 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
             {LayoutType::Video, 0}
         };
 
+        // Default power_save: enabled, 23:00 to 07:00
+        config.power_save.enabled = true;
+        config.power_save.start_time = "23:00";
+        config.power_save.end_time = "07:00";
+
         needs_save = true;
     } else {
         try {
@@ -310,6 +319,14 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 }
             } else {
                 needs_save = true;
+            }
+
+            // Parse power_save
+            if (j.contains("power_save") && j["power_save"].is_object()) {
+                auto& ps = j["power_save"];
+                config.power_save.enabled = ps.value("enabled", false);
+                config.power_save.start_time = ps.value("start_time", "23:00");
+                config.power_save.end_time = ps.value("end_time", "07:00");
             }
 
             // Parse global_keys

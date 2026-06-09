@@ -4,6 +4,11 @@
         "lat": 49.4248,
         "lon": 11.0897
     },
+    "power_save": {
+        "enabled": true,
+        "start_time": "23:00",
+        "end_time": "07:00"
+    },
     "global_keys": {
         "hide_videos": "v"
     },
