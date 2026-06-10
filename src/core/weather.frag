@@ -221,7 +221,7 @@ void main() {
         vec2 c_uv = uv - vec2(0.25 * sin(drift) - 0.15, 0.1);
         float cloud_dist = sdCloud(c_uv * 1.2);
         
-        if (cloud_dist < 0.25) {
+        if (cloud_dist < 0.35) {
             float shadow = 1.0 - smoothstep(0.0, 0.2, cloud_dist - 0.1);
             bcloud_alpha = 1.0 - smoothstep(0.0, blur, cloud_dist);
             
@@ -440,7 +440,7 @@ void main() {
         vec2 c_uv = uv - vec2(-0.15 * sin(drift) + 0.1, -0.15);
         float cloud_dist = sdCloud(c_uv * 1.0);
         
-        if (cloud_dist < 0.25) {
+        if (cloud_dist < 0.35) {
             float shadow = 1.0 - smoothstep(0.0, 0.22, cloud_dist - 0.1);
             fcloud_alpha = 1.0 - smoothstep(0.0, blur, cloud_dist);
             
