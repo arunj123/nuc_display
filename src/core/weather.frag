@@ -179,7 +179,7 @@ void main() {
         float angle = atan(to_sun.y, to_sun.x);
         float dist_to_sun = length(to_sun);
         float ray = sin(angle * 8.0 + u_time * 0.5) * 0.5 + 0.5;
-        float ray_fade = smoothstep(1.2, 0.35, dist_to_sun);
+        float ray_fade = 1.0 - smoothstep(0.35, 1.2, dist_to_sun);
         float ray_alpha = ray * ray_fade * 0.25 * (1.0 - cloud_density);
         
         col = mix(col, vec3(1.0, 0.65, 0.0), corona_alpha);
@@ -336,7 +336,7 @@ void main() {
                 vec2 offset = vec2(r * 0.6 - 0.3, fract(r * 7.0) * 0.6 - 0.3);
                 float d = length(f - offset);
                 float radius = 0.035 + r * 0.03;
-                float a = smoothstep(radius, radius - 0.035, d) * opacity;
+                float a = (1.0 - smoothstep(radius - 0.035, radius, d)) * opacity;
                 
                 snow_acc = max(snow_acc, a);
                 snow_particle_col = mix(snow_particle_col, vec3(0.95, 0.98, 1.0), a);
