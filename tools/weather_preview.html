@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Shader Animator & Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --panel-bg: rgba(22, 26, 35, 0.75);
+            --accent-color: #4f46e5;
+            --accent-hover: #6366f1;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --glow: 0 0 20px rgba(79, 70, 229, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Split layout */
+        .app-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .canvas-container {
+            flex: 1;
+            height: 100%;
+            position: relative;
+            background: radial-gradient(circle at center, #1a1c24 0%, #0d0e12 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gl-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+        }
+
+        /* High-fidelity glassmorphism panel */
+        .control-panel {
+            width: 420px;
+            height: 100%;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 2.5rem 2rem;
+            z-index: 10;
+            overflow-y: auto;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.025em;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            font-weight: 600;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .control-group {
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .val-badge {
+            font-family: 'JetBrains Mono', monospace;
+            color: #818cf8;
+            font-size: 0.85rem;
+        }
+
+        /* Beautiful styled inputs */
+        select, input[type="range"], button {
+            width: 100%;
+            background-color: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f3f4f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.2em;
+            padding-right: 2.5rem;
+        }
+
+        select:focus, select:hover {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        /* Custom Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            padding: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #818cf8;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Toggle Button */
+        .toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .toggle-btn.active {
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+            box-shadow: var(--glow);
+            border-color: transparent;
+        }
+
+        .toggle-btn:hover {
+            border-color: var(--accent-hover);
+        }
+
+        .secondary-btn {
+            background-color: transparent;
+            border: 1px dashed var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+
+        .secondary-btn:hover {
+            border-color: #818cf8;
+            color: var(--text-primary);
+        }
+
+        /* Overlay indicator for weather parameters */
+        .weather-info-overlay {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            background: rgba(13, 15, 23, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            z-index: 5;
+        }
+
+        .weather-info-overlay .city {
+            font-weight: 800;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .weather-info-overlay .desc {
+            font-size: 0.9rem;
+            color: #818cf8;
+            font-weight: 600;
+        }
+
+        .weather-info-overlay .details {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        /* Drag and drop upload overlay */
+        .upload-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 12, 16, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+            z-index: 20;
+            transition: opacity 0.3s ease;
+        }
+
+        .upload-overlay.hidden {
+            display: none;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .upload-box {
+            max-width: 500px;
+            padding: 3rem 2rem;
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            border-radius: 16px;
+            background: rgba(17, 24, 39, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .upload-box:hover, .upload-box.dragover {
+            border-color: #818cf8;
+            background: rgba(99, 102, 241, 0.05);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.15);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .upload-box h2 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .upload-box p {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .upload-box .file-input-label {
+            background: var(--accent-color);
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .upload-box:hover .file-input-label {
+            background: var(--accent-hover);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* Code reference drawer */
+        .code-info {
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            border: 1px solid var(--border-color);
+            color: #a5b4fc;
+            line-height: 1.5;
+        }
+
+        .code-info div {
+            margin-bottom: 0.25rem;
+        }
+        
+        .code-info div span {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Canvas viewer -->
+        <div class="canvas-container" id="drop-zone">
+            <!-- Drop/load overlay -->
+            <div class="upload-overlay" id="upload-overlay">
+                <div class="upload-box" id="upload-box">
+                    <div class="upload-icon">❄️</div>
+                    <h2>Weather Shader Source Required</h2>
+                    <p>Browser security prevents reading local files when opened directly. Please drag and drop <strong>src/core/weather.frag</strong> here, or click below to select it.</p>
+                    <span class="file-input-label">Select weather.frag</span>
+                    <input type="file" id="file-input" accept=".frag">
+                </div>
+            </div>
+
+            <div class="weather-info-overlay">
+                <div class="city" id="overlay-city">Simulator Mode</div>
+                <div class="desc" id="overlay-desc">Clear sky</div>
+                <div class="details" id="overlay-details">Code: 0 | Wind: 0 km/h | Night: No</div>
+            </div>
+            <canvas id="gl-canvas"></canvas>
+        </div>
+
+        <!-- Controls -->
+        <div class="control-panel">
+            <div class="header">
+                <h1>NUC Weather Shader</h1>
+                <p>Simulate and preview animations dynamically using the single source of truth shader file.</p>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Weather Scenario</div>
+                <div class="control-group">
+                    <label for="weather-code">Weather Condition</label>
+                    <select id="weather-code">
+                        <option value="0" data-desc="Clear sky">0: Clear sky</option>
+                        <option value="1" data-desc="Mainly clear">1: Mainly clear</option>
+                        <option value="2" data-desc="Partly cloudy">2: Partly cloudy</option>
+                        <option value="3" data-desc="Overcast">3: Overcast</option>
+                        <option value="45" data-desc="Foggy">45: Foggy</option>
+                        <option value="48" data-desc="Depositing rime fog">48: Depositing rime fog</option>
+                        <option value="51" data-desc="Drizzle: Light">51: Drizzle: Light</option>
+                        <option value="53" data-desc="Drizzle: Moderate">53: Drizzle: Moderate</option>
+                        <option value="55" data-desc="Drizzle: Dense">55: Drizzle: Dense</option>
+                        <option value="56" data-desc="Freezing drizzle: Light">56: Freezing drizzle: Light</option>
+                        <option value="57" data-desc="Freezing drizzle: Dense">57: Freezing drizzle: Dense</option>
+                        <option value="61" data-desc="Rain: Slight">61: Rain: Slight</option>
+                        <option value="63" data-desc="Rain: Moderate">63: Rain: Moderate</option>
+                        <option value="65" data-desc="Rain: Heavy intensity">65: Rain: Heavy intensity</option>
+                        <option value="66" data-desc="Freezing rain: Light">66: Freezing rain: Light</option>
+                        <option value="67" data-desc="Freezing rain: Heavy">67: Freezing rain: Heavy</option>
+                        <option value="71" data-desc="Snow fall: Slight">71: Snow fall: Slight</option>
+                        <option value="73" data-desc="Snow fall: Moderate">73: Snow fall: Moderate</option>
+                        <option value="75" data-desc="Snow fall: Heavy">75: Snow fall: Heavy</option>
+                        <option value="77" data-desc="Snow grains">77: Snow grains</option>
+                        <option value="80" data-desc="Rain showers: Slight">80: Rain showers: Slight</option>
+                        <option value="81" data-desc="Rain showers: Moderate">81: Rain showers: Moderate</option>
+                        <option value="82" data-desc="Rain showers: Violent">82: Rain showers: Violent</option>
+                        <option value="85" data-desc="Snow showers: Slight">85: Snow showers: Slight</option>
+                        <option value="86" data-desc="Snow showers: Heavy">86: Snow showers: Heavy</option>
+                        <option value="95" data-desc="Thunderstorm: Slight or moderate">95: Thunderstorm: Slight or moderate</option>
+                        <option value="96" data-desc="Thunderstorm with slight hail">96: Thunderstorm with slight hail</option>
+                        <option value="99" data-desc="Thunderstorm with heavy hail">99: Thunderstorm with heavy hail</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Environment Settings</div>
+                
+                <div class="control-group">
+                    <label>Time & Day <span class="val-badge" id="night-badge">Day</span></label>
+                    <button class="toggle-btn" id="night-toggle">Toggle Night Mode</button>
+                </div>
+
+                <div class="control-group">
+                    <label for="wind-speed">Wind Speed <span class="val-badge" id="wind-badge">12 km/h</span></label>
+                    <input type="range" id="wind-speed" min="0" max="80" value="12">
+                </div>
+
+                <div class="control-group">
+                    <label for="time-scale">Animation Speed <span class="val-badge" id="speed-badge">1.0x</span></label>
+                    <input type="range" id="time-scale" min="0" max="4" step="0.1" value="1">
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Active Shader Intensities</div>
+                <div class="code-info">
+                    <div><span>Rain:</span> <span id="info-rain" style="color: #fff">0.0</span></div>
+                    <div><span>Snow:</span> <span id="info-snow" style="color: #fff">0.0</span></div>
+                    <div><span>Hail:</span> <span id="info-hail" style="color: #fff">0.0</span></div>
+                    <div><span>Cloud Density:</span> <span id="info-cloud" style="color: #fff">0.0</span></div>
+                    <div><span>Fog Density:</span> <span id="info-fog" style="color: #fff">0.0</span></div>
+                    <div><span>Storm Intensity:</span> <span id="info-storm" style="color: #fff">0.0</span></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Shader Sync</div>
+                <button class="secondary-btn" id="reload-shader-btn">Load Different shader file</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebGL Rendering Logic -->
+    <script>
+        // Common Vertex Shader
+        const vsSource = `
+            attribute vec4 a_position;
+            attribute vec2 a_texCoord;
+            varying vec2 v_texCoord;
+            void main() {
+                gl_Position = a_position;
+                v_texCoord = a_texCoord;
+            }
+        `;
+
+        let fsSource = ''; // Loaded dynamically
+
+        // WebGL state and animation variables
+        let gl = null;
+        let program = null;
+        let animationFrameId = null;
+        let positionAttributeLocation;
+        let texCoordAttributeLocation;
+        let timeUniformLocation;
+        let weatherCodeUniformLocation;
+        let isNightUniformLocation;
+        let windSpeedUniformLocation;
+
+        // Persistent WebGL Buffers
+        let positionBuffer = null;
+        let texCoordBuffer = null;
+
+        let startTime = Date.now();
+        let currentElapsed = 0;
+        let timeScale = 1.0;
+        let isNight = 0;
+        let windSpeed = 12.0;
+        let weatherCode = 0;
+
+        // Try loading shader on boot
+        async function loadShaderSource() {
+            // 1. Try fetching directly (works on local servers / WSL web-servers)
+            try {
+                const response = await fetch('../src/core/weather.frag');
+                if (response.ok) {
+                    fsSource = await response.text();
+                    localStorage.setItem('weather_shader_source', fsSource);
+                    hideOverlay();
+                    initWebGL();
+                    return;
+                }
+            } catch (e) {
+                console.log("Auto-fetch blocked by CORS or network, checking local storage cache...");
+            }
+
+            // 2. Try loading from cache
+            const cachedSource = localStorage.getItem('weather_shader_source');
+            if (cachedSource) {
+                fsSource = cachedSource;
+                hideOverlay();
+                initWebGL();
+                return;
+            }
+
+            // 3. Force upload dialog
+            showOverlay();
+        }
+
+        function showOverlay() {
+            document.getElementById('upload-overlay').classList.remove('hidden');
+        }
+
+        function hideOverlay() {
+            document.getElementById('upload-overlay').classList.add('hidden');
+        }
+
+        // Initialize drag & drop and file picker fallback
+        function setupLoader() {
+            const fileInput = document.getElementById('file-input');
+            const uploadBox = document.getElementById('upload-box');
+            const dropZone = document.getElementById('drop-zone');
+            const reloadBtn = document.getElementById('reload-shader-btn');
+
+            uploadBox.addEventListener('click', () => fileInput.click());
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) handleFile(file);
+            });
+
+            // Drag & Drop
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    uploadBox.classList.add('dragover');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    uploadBox.classList.remove('dragover');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const file = e.dataTransfer.files[0];
+                if (file) handleFile(file);
+            }, false);
+
+            reloadBtn.addEventListener('click', () => {
+                showOverlay();
+            });
+        }
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                fsSource = e.target.result;
+                localStorage.setItem('weather_shader_source', fsSource);
+                hideOverlay();
+                
+                // Reboot WebGL context if already running, or start fresh
+                if (gl) {
+                    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                    rebuildProgram();
+                } else {
+                    initWebGL();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function rebuildProgram() {
+            const vs = compileShader(gl, vsSource, gl.VERTEX_SHADER);
+            const fs = compileShader(gl, fsSource, gl.FRAGMENT_SHADER);
+            if (!fs) {
+                alert("Shader Compile Error! Check browser console.");
+                showOverlay();
+                return;
+            }
+            
+            const newProgram = linkProgram(gl, vs, fs);
+            if (newProgram) {
+                program = newProgram;
+                // Re-bind locations
+                positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+                texCoordAttributeLocation = gl.getAttribLocation(program, "a_texCoord");
+                timeUniformLocation = gl.getUniformLocation(program, "u_time");
+                weatherCodeUniformLocation = gl.getUniformLocation(program, "u_weather_code");
+                isNightUniformLocation = gl.getUniformLocation(program, "u_is_night");
+                windSpeedUniformLocation = gl.getUniformLocation(program, "u_wind_speed");
+            }
+            requestAnimationFrame(renderLoop);
+        }
+
+        function updateGeometry() {
+            if (!gl || !positionBuffer) return;
+
+            const canvas = document.getElementById("gl-canvas");
+            const aspect = canvas.width / canvas.height;
+            let xMin = -1.0;
+            let xMax = 1.0;
+            let yMin = -1.0;
+            let yMax = 1.0;
+
+            if (aspect > 1.0) {
+                // Widescreen: adjust horizontal bounds to render as a perfect square
+                xMin = -1.0 / aspect;
+                xMax = 1.0 / aspect;
+            } else {
+                // Portrait: adjust vertical bounds to render as a perfect square
+                yMin = -1.0 * aspect;
+                yMax = 1.0 * aspect;
+            }
+
+            const positions = [
+                xMin, yMin,
+                xMax, yMin,
+                xMin, yMax,
+                xMin, yMax,
+                xMax, yMin,
+                xMax, yMax,
+            ];
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        }
+
+        function initWebGL() {
+            const canvas = document.getElementById("gl-canvas");
+            gl = canvas.getContext("webgl");
+            if (!gl) {
+                alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+                return;
+            }
+
+            // Create program
+            const vs = compileShader(gl, vsSource, gl.VERTEX_SHADER);
+            const fs = compileShader(gl, fsSource, gl.FRAGMENT_SHADER);
+            if (!fs) {
+                alert("Error compiling fragment shader. Please upload a valid weather.frag file.");
+                showOverlay();
+                return;
+            }
+            
+            program = linkProgram(gl, vs, fs);
+
+            // Look up attribute and uniform locations
+            positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+            texCoordAttributeLocation = gl.getAttribLocation(program, "a_texCoord");
+            timeUniformLocation = gl.getUniformLocation(program, "u_time");
+            weatherCodeUniformLocation = gl.getUniformLocation(program, "u_weather_code");
+            isNightUniformLocation = gl.getUniformLocation(program, "u_is_night");
+            windSpeedUniformLocation = gl.getUniformLocation(program, "u_wind_speed");
+
+            // Setup buffers
+            positionBuffer = gl.createBuffer();
+            texCoordBuffer = gl.createBuffer();
+
+            // Setup texcoords (static 0 to 1 mapping, Y-flipped to match C++ Y-down space)
+            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+            const texCoords = [
+                0, 1, // bottom-left (maps to bottom of canvas)
+                1, 1, // bottom-right (maps to bottom of canvas)
+                0, 0, // top-left (maps to top of canvas)
+                0, 0, // top-left
+                1, 1, // bottom-right
+                1, 0, // top-right (maps to top of canvas)
+            ];
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            resizeCanvas(); // This calls updateGeometry internally
+            
+            // Start loop
+            lastFrameTime = Date.now();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function compileShader(gl, source, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function linkProgram(gl, vs, fs) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vs);
+            gl.attachShader(program, fs);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error(gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        function resizeCanvas() {
+            if (!gl) return;
+            const canvas = document.getElementById("gl-canvas");
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+                updateGeometry();
+            }
+        }
+
+        function setupControls() {
+            const codeSelect = document.getElementById("weather-code");
+            const nightToggle = document.getElementById("night-toggle");
+            const windSlider = document.getElementById("wind-speed");
+            const speedSlider = document.getElementById("time-scale");
+
+            codeSelect.addEventListener("change", (e) => {
+                weatherCode = parseInt(e.target.value);
+                updateOverlay();
+                updateShaderParametersInfo();
+            });
+
+            nightToggle.addEventListener("click", () => {
+                isNight = isNight === 1 ? 0 : 1;
+                nightToggle.classList.toggle("active", isNight === 1);
+                document.getElementById("night-badge").innerText = isNight === 1 ? "Night" : "Day";
+                updateOverlay();
+            });
+
+            windSlider.addEventListener("input", (e) => {
+                windSpeed = parseFloat(e.target.value);
+                document.getElementById("wind-badge").innerText = `${windSpeed} km/h`;
+                updateOverlay();
+            });
+
+            speedSlider.addEventListener("input", (e) => {
+                timeScale = parseFloat(e.target.value);
+                document.getElementById("speed-badge").innerText = `${timeScale.toFixed(1)}x`;
+            });
+
+            updateOverlay();
+            updateShaderParametersInfo();
+        }
+
+        function updateOverlay() {
+            const codeSelect = document.getElementById("weather-code");
+            const selectedOpt = codeSelect.options[codeSelect.selectedIndex];
+            const desc = selectedOpt.getAttribute("data-desc");
+
+            document.getElementById("overlay-desc").innerText = desc;
+            document.getElementById("overlay-details").innerText = 
+                `Code: ${weatherCode} | Wind: ${windSpeed} km/h | Night: ${isNight === 1 ? 'Yes' : 'No'}`;
+        }
+
+        function updateShaderParametersInfo() {
+            let rain = 0.0;
+            let snow = 0.0;
+            let hail = 0.0;
+            let cloud = 0.0;
+            let fog = 0.0;
+            let storm = 0.0;
+
+            if (weatherCode === 0) {
+            } else if (weatherCode === 1) {
+                cloud = 0.25;
+            } else if (weatherCode === 2) {
+                cloud = 0.55;
+            } else if (weatherCode === 3) {
+                cloud = 1.0;
+            } else if (weatherCode === 45 || weatherCode === 48) {
+                cloud = 0.8;
+                fog = 1.0;
+            } else if (weatherCode >= 51 && weatherCode <= 55) {
+                cloud = 0.9;
+                rain = 0.12 * (weatherCode - 50);
+            } else if (weatherCode === 56 || weatherCode === 57) {
+                cloud = 0.9;
+                rain = 0.25;
+                hail = 0.2 * (weatherCode - 55);
+            } else if (weatherCode >= 61 && weatherCode <= 65) {
+                cloud = 1.0;
+                rain = 0.3 + 0.3 * (Math.floor((weatherCode - 61) / 2) + 1);
+            } else if (weatherCode === 66 || weatherCode === 67) {
+                cloud = 1.0;
+                rain = 0.6;
+                hail = 0.4 * (weatherCode - 65);
+            } else if (weatherCode >= 71 && weatherCode <= 75) {
+                cloud = 1.0;
+                snow = 0.3 + 0.25 * (Math.floor((weatherCode - 71) / 2) + 1);
+            } else if (weatherCode === 77) {
+                cloud = 1.0;
+                snow = 0.4;
+                hail = 0.4;
+            } else if (weatherCode >= 80 && weatherCode <= 82) {
+                cloud = 1.0;
+                rain = 0.6 + 0.3 * (weatherCode - 79);
+            } else if (weatherCode === 85 || weatherCode === 86) {
+                cloud = 1.0;
+                snow = 0.6 + 0.4 * (weatherCode - 84);
+            } else if (weatherCode === 95) {
+                cloud = 1.0;
+                rain = 1.0;
+                storm = 0.7;
+            } else if (weatherCode === 96 || weatherCode === 99) {
+                cloud = 1.0;
+                rain = 1.2;
+                hail = 0.8;
+                storm = 1.0;
+            }
+
+            document.getElementById("info-rain").innerText = rain.toFixed(2);
+            document.getElementById("info-snow").innerText = snow.toFixed(2);
+            document.getElementById("info-hail").innerText = hail.toFixed(2);
+            document.getElementById("info-cloud").innerText = cloud.toFixed(2);
+            document.getElementById("info-fog").innerText = fog.toFixed(2);
+            document.getElementById("info-storm").innerText = storm.toFixed(2);
+        }
+
+        let lastFrameTime = Date.now();
+        function renderLoop() {
+            if (!gl || !program) return;
+            const now = Date.now();
+            const delta = (now - lastFrameTime) / 1000.0;
+            lastFrameTime = now;
+
+            currentElapsed += delta * timeScale;
+
+            // Clear screen
+            gl.clearColor(0.05, 0.05, 0.07, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // Use program
+            gl.useProgram(program);
+            
+            // Set attributes
+            if (positionAttributeLocation !== -1) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.enableVertexAttribArray(positionAttributeLocation);
+                gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+            }
+
+            if (texCoordAttributeLocation !== -1) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+                gl.enableVertexAttribArray(texCoordAttributeLocation);
+                gl.vertexAttribPointer(texCoordAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+            }
+
+            // Set uniforms
+            gl.uniform1f(timeUniformLocation, currentElapsed);
+            gl.uniform1i(weatherCodeUniformLocation, weatherCode);
+            gl.uniform1i(isNightUniformLocation, isNight);
+            gl.uniform1f(windSpeedUniformLocation, windSpeed);
+
+            // Draw quad
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+        }
+
+        window.onload = function() {
+            setupControls();
+            setupLoader();
+            loadShaderSource();
+            window.addEventListener('resize', resizeCanvas);
+        };
+    </script>
+</body>
+</html>

@@ -75,7 +75,16 @@ include_directories(
     ${LIBPNG_INCLUDE_DIRS}
     ${CURL_INCLUDE_DIRS}
     src
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# Generate C++ Header for weather fragment shader
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/core/weather.frag" WEATHER_SHADER_CONTENT)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/weather_shader_gen.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/weather_shader_gen.hpp"
+)
+
 
 if(NOT PLATFORM_RPI)
     include_directories(${VA_INCLUDE_DIRS})

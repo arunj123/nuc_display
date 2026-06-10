@@ -1,0 +1,5 @@
+#pragma once
+
+const char* weather_fragment_shader = R"(
+@WEATHER_SHADER_CONTENT@
+)";
