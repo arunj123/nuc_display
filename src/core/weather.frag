@@ -265,7 +265,7 @@ void main() {
             float fi = float(i);
             float scale = 4.0 + fi * 3.0;
             float speed = 1.6 + fi * 0.7;
-            float opacity = 0.45 + fi * 0.15; // Increased visibility
+            float opacity = 0.7 + fi * 0.15; // Increased visibility / less transparent
             
             vec2 p_uv = uv;
             p_uv.x -= wind * p_uv.y;
@@ -284,13 +284,13 @@ void main() {
                 
                 vec2 cap_a = vec2(0.0, 0.16);
                 vec2 cap_b = vec2(0.0, -0.16);
-                // Thicker lines (0.028 instead of 0.015) for increased visibility
-                float dist = sdCapsule(vec2(streak_x, streak_y), cap_a, cap_b, 0.028);
+                // Thicker lines (0.035 instead of 0.028) for maximum visibility
+                float dist = sdCapsule(vec2(streak_x, streak_y), cap_a, cap_b, 0.035);
                 
                 float fade = smoothstep(-0.25, 0.15, streak_y);
                 float a = (1.0 - smoothstep(0.0, blur, dist)) * fade * opacity;
-                // Brighter colors (especially for night) for visibility
-                vec3 col_layer = (u_is_night == 1) ? vec3(0.5, 0.62, 0.78) : vec3(0.72, 0.82, 0.95);
+                // Much brighter and whiter day/night colors
+                vec3 col_layer = (u_is_night == 1) ? vec3(0.75, 0.85, 1.0) : vec3(0.9, 0.95, 1.0);
                 
                 rain_acc = max(rain_acc, a);
                 rain_particle_col = mix(rain_particle_col, col_layer, a);
@@ -344,8 +344,9 @@ void main() {
         }
         
         float bottom_mask = smoothstep(-0.85, -0.75, uv.y);
-        float top_mask = 1.0 - smoothstep(0.0, 0.25, uv.y);
-        snow_acc *= bottom_mask * top_mask;
+        float top_mask = 1.0 - smoothstep(-0.35, -0.15, uv.y);
+        float horiz_mask = 1.0 - smoothstep(0.4, 0.65, abs(uv.x));
+        snow_acc *= bottom_mask * top_mask * horiz_mask;
         
         col = mix(col, snow_particle_col, snow_acc);
         final_alpha = max(final_alpha, snow_acc);
@@ -382,8 +383,9 @@ void main() {
         }
         
         float bottom_mask = smoothstep(-0.85, -0.75, uv.y);
-        float top_mask = 1.0 - smoothstep(0.0, 0.25, uv.y);
-        hail_acc *= bottom_mask * top_mask;
+        float top_mask = 1.0 - smoothstep(-0.35, -0.15, uv.y);
+        float horiz_mask = 1.0 - smoothstep(0.4, 0.65, abs(uv.x));
+        hail_acc *= bottom_mask * top_mask * horiz_mask;
         
         col = mix(col, hail_particle_col, hail_acc);
         final_alpha = max(final_alpha, hail_acc);
