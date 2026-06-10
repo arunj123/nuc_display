@@ -236,7 +236,7 @@ void WeatherModule::render(core::Renderer& renderer, TextRenderer& text_renderer
         } catch(...) {}
     }
     
-    renderer.draw_animated_weather(data.weather_code, icon_x, 0.17f, icon_w, icon_h, time_sec, is_night);
+    renderer.draw_animated_weather(data.weather_code, icon_x, 0.17f, icon_w, icon_h, time_sec, is_night, data.wind_speed);
 
 
     // =========================================================
