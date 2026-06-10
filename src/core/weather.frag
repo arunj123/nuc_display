@@ -318,7 +318,7 @@ void main() {
             float fi = float(i);
             float scale = 4.0 + fi * 3.0;
             float speed = 0.35 + fi * 0.15;
-            float opacity = 0.45 + fi * 0.15;
+            float opacity = 0.75 + fi * 0.12; // Increased visibility / less transparent
             
             vec2 p_uv = uv;
             p_uv.y += u_time * speed;
@@ -335,11 +335,14 @@ void main() {
             if (r < density) {
                 vec2 offset = vec2(r * 0.6 - 0.3, fract(r * 7.0) * 0.6 - 0.3);
                 float d = length(f - offset);
-                float radius = 0.035 + r * 0.03;
-                float a = (1.0 - smoothstep(radius - 0.035, radius, d)) * opacity;
+                // Increased snowflake radius from ~0.05 to ~0.15 for much larger snowflakes
+                float radius = 0.10 + r * 0.08;
+                // Created a solid core (inner 40% of radius is solid white) fading to soft edges
+                float a = (1.0 - smoothstep(radius * 0.4, radius, d)) * opacity;
                 
                 snow_acc = max(snow_acc, a);
-                snow_particle_col = mix(snow_particle_col, vec3(0.95, 0.98, 1.0), a);
+                // Pure white snow particles
+                snow_particle_col = mix(snow_particle_col, vec3(1.0), a);
             }
         }
         
