@@ -298,44 +298,6 @@ TEST_F(ConfigModuleTest, ParsePowerSaveConfig) {
     EXPECT_EQ(result->power_save.end_time, "06:45");
 }
 
-TEST_F(ConfigModuleTest, ParseHttpServerConfig) {
-    nlohmann::json j = {
-        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
-        {"stocks", nlohmann::json::array()},
-        {"videos", nlohmann::json::array()},
-        {"http_server", {
-            {"enabled", true},
-            {"port", 9090}
-        }}
-    };
-    std::ofstream out(test_file_);
-    out << j.dump();
-    out.close();
-
-    ConfigModule config;
-    auto result = config.load_or_create_config(test_file_);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(result->http_server.enabled);
-    EXPECT_EQ(result->http_server.port, 9090);
-}
-
-TEST(ConfigValidatorTest, HttpServerInvalidPort) {
-    AppConfig config;
-    config.location = {"Test", 0.0f, 0.0f};
-    config.stocks.push_back({"AAPL", "Apple", "$"});
-    config.http_server.enabled = true;
-    config.http_server.port = 80; // Privileged port (invalid)
-
-    auto errors = ConfigValidator::validate(config);
-    ASSERT_GE(errors.size(), 1u);
-    EXPECT_NE(errors[0].find("http_server.port out of range"), std::string::npos);
-
-    config.http_server.port = 70000; // Too high (invalid)
-    errors = ConfigValidator::validate(config);
-    ASSERT_GE(errors.size(), 1u);
-    EXPECT_NE(errors[0].find("http_server.port out of range"), std::string::npos);
-}
-
 
 TEST(ConfigValidatorTest, StockKeyDuplicateWithGlobal) {
     AppConfig config;

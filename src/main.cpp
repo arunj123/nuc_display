@@ -88,9 +88,20 @@ static bool is_in_power_save_range(int current_min, int start_min, int end_min) 
 
 int main(int argc, char** argv) {
     std::string config_path = "config.json";
+    bool enable_http_server = false;
+    int http_server_port = 8080;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--config" && i + 1 < argc) {
             config_path = argv[i + 1];
+            i++;
+        } else if (std::string(argv[i]) == "--http-server") {
+            enable_http_server = true;
+        } else if (std::string(argv[i]) == "--http-port" && i + 1 < argc) {
+            try {
+                http_server_port = std::stoi(argv[i + 1]);
+            } catch (...) {
+                std::cerr << "Invalid port: " << argv[i + 1] << ". Defaulting to 8080.\n";
+            }
             i++;
         }
     }
@@ -260,12 +271,12 @@ int main(int argc, char** argv) {
 
     // Initialize Web Server
     std::unique_ptr<modules::HttpServerModule> http_server;
-    if (app_config.http_server.enabled) {
+    if (enable_http_server) {
         http_server = std::make_unique<modules::HttpServerModule>(
             input_module.get(),
             config_path,
             g_config_reload_requested,
-            app_config.http_server.port
+            http_server_port
         );
         http_server->start();
     }
@@ -391,24 +402,6 @@ int main(int argc, char** argv) {
                     cameras.push_back(std::move(cam));
                     camera_configs_copy.push_back(c_config);
                     camera_last_retry.push_back(std::chrono::steady_clock::now());
-                }
-                
-                // Restart web server if configuration changed
-                if (http_server) {
-                    if (!app_config.http_server.enabled || http_server->get_port() != app_config.http_server.port) {
-                        std::cout << "[Core] Restarting Web Server...\n";
-                        http_server->stop();
-                        http_server.reset();
-                    }
-                }
-                if (app_config.http_server.enabled && !http_server) {
-                    http_server = std::make_unique<modules::HttpServerModule>(
-                        input_module.get(),
-                        config_path,
-                        g_config_reload_requested,
-                        app_config.http_server.port
-                    );
-                    http_server->start();
                 }
                 
                 std::cout << "[Core] Configuration reloaded successfully.\n";
@@ -774,11 +767,23 @@ int main(int argc, char** argv) {
                 float aspect = (float)renderer->width() / renderer->height();
                 float qr_w = 0.035f;
                 float qr_h = qr_w * aspect;
-                renderer->draw_quad(qr_texture, 0.03f, 0.03f, qr_w, qr_h);
+                
+                float right_margin = 0.97f;
+                float qr_x = right_margin - qr_w;
+                float qr_y = 0.06f;
+                
+                renderer->draw_quad(qr_texture, qr_x, qr_y, qr_w, qr_h);
                 
                 text_renderer->set_pixel_size(0, 18);
-                if (auto glyphs = text_renderer->shape_text("Config Portal: " + http_server->get_web_address())) {
-                    renderer->draw_text(glyphs.value(), 0.03f + qr_w + 0.01f, 0.066f, 1.0f, 0.4f, 0.7f, 1.0f, 0.8f);
+                std::string portal_text = "Config Portal: " + http_server->get_web_address();
+                if (auto glyphs = text_renderer->shape_text(portal_text)) {
+                    float text_w = 0.0f;
+                    for (const auto& g : glyphs.value()) {
+                        text_w += g.advance / (float)renderer->width();
+                    }
+                    float text_x = right_margin - text_w;
+                    float text_y = 0.035f;
+                    renderer->draw_text(glyphs.value(), text_x, text_y, 1.0f, 0.4f, 0.7f, 1.0f, 0.8f);
                 }
             }
         }

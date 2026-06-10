@@ -89,11 +89,6 @@ struct PowerSaveConfig {
     std::string end_time = "07:00";
 };
 
-struct HttpServerConfig {
-    bool enabled = true;
-    int port = 8080;
-};
-
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
@@ -103,7 +98,6 @@ struct AppConfig {
     GlobalKeysConfig global_keys;
     StockKeysConfig stock_keys;
     PowerSaveConfig power_save;
-    HttpServerConfig http_server;
 };
 
 

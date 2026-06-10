@@ -6,7 +6,7 @@ After=network.target graphics.target alsa-restore.service
 Type=simple
 User=@USER@
 WorkingDirectory=@WORKDIR@
-ExecStart=@WORKDIR@/build/nuc_display
+ExecStart=@WORKDIR@/build/nuc_display --http-server
 Restart=always
 RestartSec=5
 
