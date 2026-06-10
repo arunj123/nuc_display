@@ -83,6 +83,13 @@ std::optional<KeyEvent> InputModule::pop_event() {
     return ev;
 }
 
+void InputModule::inject_key(uint16_t code, int value) {
+    std::lock_guard<std::mutex> lock(this->event_mutex_);
+    this->event_queue_.push_back({code, value});
+    std::cout << "[Input] Injected Key Event: Code " << code << " [value=" << value << "]\n";
+}
+
+
 void InputModule::rediscover_keyboards() {
     // Collect currently tracked fd inodes to avoid duplicates
     std::set<ino_t> existing_inodes;

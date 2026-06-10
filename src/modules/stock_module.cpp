@@ -30,6 +30,15 @@ void StockModule::add_symbol(const std::string& symbol, const std::string& name,
     symbols_.push_back({symbol, name, currency_symbol});
 }
 
+void StockModule::clear_symbols() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    symbols_.clear();
+    stock_data_.clear();
+    current_index_ = 0;
+    current_chart_index_ = 0;
+}
+
+
 size_t StockModule::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;

@@ -32,6 +32,8 @@ add_executable(test_modules
     ../src/modules/config_module.cpp
     ../src/modules/config_validator.cpp
     ../src/modules/stock_module.cpp
+    ../src/modules/input_module.cpp
+    ../src/modules/http_server_module.cpp
     ../src/core/renderer.cpp
 )
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})
@@ -44,6 +46,7 @@ target_link_libraries(test_modules
     ${GLESv2_LIBRARIES}
     ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
+    qrcodegen
 )
 add_test(NAME ModuleTests COMMAND test_modules)
 

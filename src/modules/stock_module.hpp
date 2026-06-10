@@ -43,6 +43,8 @@ public:
     ~StockModule();
 
     void add_symbol(const std::string& symbol, const std::string& name, const std::string& currency_symbol = "$");
+    void clear_symbols();
+
     
     // Blocking fetch of all configured symbols (can be run in thread pool)
     void update_all_data();

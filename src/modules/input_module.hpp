@@ -26,6 +26,8 @@ public:
     void stop();
 
     std::optional<KeyEvent> pop_event();
+    void inject_key(uint16_t code, int value = 1);
+
 
 private:
     void polling_thread();

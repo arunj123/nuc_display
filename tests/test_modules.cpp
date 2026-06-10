@@ -298,6 +298,45 @@ TEST_F(ConfigModuleTest, ParsePowerSaveConfig) {
     EXPECT_EQ(result->power_save.end_time, "06:45");
 }
 
+TEST_F(ConfigModuleTest, ParseHttpServerConfig) {
+    nlohmann::json j = {
+        {"location", {{"name", "London"}, {"lat", 51.5}, {"lon", -0.1}}},
+        {"stocks", nlohmann::json::array()},
+        {"videos", nlohmann::json::array()},
+        {"http_server", {
+            {"enabled", true},
+            {"port", 9090}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->http_server.enabled);
+    EXPECT_EQ(result->http_server.port, 9090);
+}
+
+TEST(ConfigValidatorTest, HttpServerInvalidPort) {
+    AppConfig config;
+    config.location = {"Test", 0.0f, 0.0f};
+    config.stocks.push_back({"AAPL", "Apple", "$"});
+    config.http_server.enabled = true;
+    config.http_server.port = 80; // Privileged port (invalid)
+
+    auto errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("http_server.port out of range"), std::string::npos);
+
+    config.http_server.port = 70000; // Too high (invalid)
+    errors = ConfigValidator::validate(config);
+    ASSERT_GE(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("http_server.port out of range"), std::string::npos);
+}
+
+
 TEST(ConfigValidatorTest, StockKeyDuplicateWithGlobal) {
     AppConfig config;
     config.location = {"Test", 0.0f, 0.0f};
@@ -487,7 +526,30 @@ TEST(NewsModuleTest, MalformedAndEmptyRSS) {
     SUCCEED();
 }
 
+#include "modules/http_server_module.hpp"
+#include "modules/input_module.hpp"
+
+TEST(HttpServerModuleTest, BasicVerification) {
+    InputModule input;
+    std::atomic<bool> reload_flag{false};
+    
+    // Start server on a non-conflicting port
+    HttpServerModule server(&input, "config.json", reload_flag, 9999);
+    
+    EXPECT_EQ(server.get_port(), 9999);
+    EXPECT_FALSE(server.get_ip_address().empty());
+    EXPECT_THAT(server.get_web_address(), ::testing::HasSubstr("9999"));
+    
+    // Check QR code image generation
+    EXPECT_TRUE(server.has_qr_code_updates());
+    auto qr = server.get_qr_code_image();
+    EXPECT_GT(qr.size, 0);
+    EXPECT_EQ(qr.rgba_pixels.size(), static_cast<size_t>(qr.size * qr.size * 4));
+    EXPECT_FALSE(server.has_qr_code_updates());
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+

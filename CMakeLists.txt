@@ -21,6 +21,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+# QR Code Generator (Nayuki)
+FetchContent_Declare(
+    qrcodegen
+    URL https://github.com/nayuki/QR-Code-generator/archive/refs/tags/v1.8.0.tar.gz
+)
+FetchContent_GetProperties(qrcodegen)
+if(NOT qrcodegen_POPULATED)
+    FetchContent_Populate(qrcodegen)
+    add_library(qrcodegen STATIC
+        ${qrcodegen_SOURCE_DIR}/cpp/qrcodegen.cpp
+    )
+    target_include_directories(qrcodegen PUBLIC ${qrcodegen_SOURCE_DIR}/cpp)
+endif()
+
 # Core Graphics (common to both platforms)
 pkg_check_modules(DRM REQUIRED libdrm)
 pkg_check_modules(GBM REQUIRED gbm)
@@ -115,6 +129,7 @@ set(SRC_FILES
     src/modules/input_module.cpp
     src/modules/camera_module.cpp
     src/modules/performance_monitor.cpp
+    src/modules/http_server_module.cpp
 )
 
 add_executable(nuc_display ${SRC_FILES})
@@ -141,6 +156,7 @@ target_link_libraries(nuc_display
     ${LIBPNG_LIBRARIES}
     ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
+    qrcodegen
     Threads::Threads
     m
 )

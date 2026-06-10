@@ -188,7 +188,10 @@ static bool generate_test_config() {
         { "type": "stocks" },
         { "type": "news" },
         { "type": "video", "video_index": 0 }
-    ]
+    ],
+    "http_server": {
+        "enabled": false
+    }
 })";
     f.close();
     std::cout << "[Config] Generated test config at " << TEST_CONFIG_PATH << "\n";

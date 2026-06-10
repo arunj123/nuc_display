@@ -26,11 +26,14 @@
 #include "modules/camera_module.hpp"
 #include "modules/config_validator.hpp"
 #include "modules/performance_monitor.hpp"
+#include "modules/http_server_module.hpp"
+
 
 using namespace nuc_display;
 
 std::atomic<bool> g_running{true};
 std::atomic<bool> g_screenshot_requested{false};
+std::atomic<bool> g_config_reload_requested{false};
 
 void sigint_handler(int) {
     g_running = false;
@@ -255,6 +258,20 @@ int main(int argc, char** argv) {
     auto input_module = std::make_unique<modules::InputModule>();
     input_module->start();
 
+    // Initialize Web Server
+    std::unique_ptr<modules::HttpServerModule> http_server;
+    if (app_config.http_server.enabled) {
+        http_server = std::make_unique<modules::HttpServerModule>(
+            input_module.get(),
+            config_path,
+            g_config_reload_requested,
+            app_config.http_server.port
+        );
+        http_server->start();
+    }
+    GLuint qr_texture = 0;
+
+
     auto last_weather_update = std::chrono::steady_clock::now();
     auto last_stock_update = std::chrono::steady_clock::now();
     auto last_news_update = std::chrono::steady_clock::now();
@@ -275,8 +292,134 @@ int main(int argc, char** argv) {
     std::cout << "--- Starting main loop ---" << std::endl;
 
     while (g_running) {
+        // --- CHECK CONFIG RELOAD REQUEST ---
+        if (g_config_reload_requested) {
+            std::cout << "[Core] Config reload requested. Reloading...\n";
+            g_config_reload_requested = false;
+            
+            auto app_config_res = config_module->load_or_create_config(config_path);
+            if (app_config_res) {
+                // Wait for all video processing tasks to complete
+                for (auto& task : video_process_tasks) {
+                    if (task.valid()) {
+                        try { task.get(); } catch (...) {}
+                    }
+                }
+                
+                // Clear existing video decoders and cameras
+                video_decoders.clear();
+                video_started.clear();
+                video_process_tasks.clear();
+                
+                for (auto& cam : cameras) {
+                    if (cam) cam->close();
+                }
+                cameras.clear();
+                camera_configs_copy.clear();
+                camera_last_retry.clear();
+                
+                // Assign new configuration
+                app_config = app_config_res.value();
+                
+                // Validate new configuration
+                auto config_errors = modules::ConfigValidator::validate(app_config);
+                if (!config_errors.empty()) {
+                    std::cerr << "[Config] Reloaded configuration has " << config_errors.size() << " validation error(s):\n";
+                    for (const auto& err : config_errors) {
+                        std::cerr << "  - " << err << "\n";
+                    }
+                }
+                
+                // Re-initialize stocks
+                stock_module->clear_symbols();
+                for (const auto& s : app_config.stocks) {
+                    stock_module->add_symbol(s.symbol, s.name, s.currency_symbol);
+                }
+                stock_task = thread_pool.enqueue([&stock_module]() {
+                    stock_module->update_all_data();
+                });
+                
+                // Re-initialize weather & news
+                weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
+                    return weather_module->fetch_current_weather(lat, lon, name);
+                });
+                news_task = thread_pool.enqueue([&news_module]() {
+                    news_module->update_headlines();
+                });
+                
+                // Re-initialize video decoders
+                for (const auto& v_config : app_config.videos) {
+                    if (!v_config.enabled) continue;
+                    
+                    auto decoder = std::make_unique<modules::VideoDecoder>();
+                    if (display) {
+#ifdef PLATFORM_RPI
+                        decoder->init_v4l2(display->drm_fd());
+#else
+                        decoder->init_vaapi(display->drm_fd());
+#endif
+                    }
+                    decoder->set_audio_enabled(v_config.audio_enabled);
+                    if (v_config.audio_enabled) {
+                        decoder->init_audio(v_config.audio_device);
+                    }
+                    
+                    if (!v_config.playlists.empty()) {
+                        if (v_config.start_trigger_key == 0) {
+                            decoder->load_playlist(v_config.playlists);
+                            video_started.push_back(true);
+                        } else {
+                            video_started.push_back(false);
+                        }
+                        video_decoders.push_back(std::move(decoder));
+                    } else {
+                        video_started.push_back(false);
+                    }
+                }
+                video_process_tasks.resize(video_decoders.size());
+                
+                // Re-initialize cameras
+                for (const auto& c_config : app_config.cameras) {
+                    if (!c_config.enabled) continue;
+                    auto cam = std::make_unique<modules::CameraModule>();
+                    if (cam->open(c_config)) {
+                        std::cout << "[Core] Camera opened: " << cam->device_name() 
+                                  << " (" << cam->device_path() << ")\n";
+                    } else {
+                        std::cout << "[Core] Camera not available yet (will retry via hot-plug).\n";
+                    }
+                    cameras.push_back(std::move(cam));
+                    camera_configs_copy.push_back(c_config);
+                    camera_last_retry.push_back(std::chrono::steady_clock::now());
+                }
+                
+                // Restart web server if configuration changed
+                if (http_server) {
+                    if (!app_config.http_server.enabled || http_server->get_port() != app_config.http_server.port) {
+                        std::cout << "[Core] Restarting Web Server...\n";
+                        http_server->stop();
+                        http_server.reset();
+                    }
+                }
+                if (app_config.http_server.enabled && !http_server) {
+                    http_server = std::make_unique<modules::HttpServerModule>(
+                        input_module.get(),
+                        config_path,
+                        g_config_reload_requested,
+                        app_config.http_server.port
+                    );
+                    http_server->start();
+                }
+                
+                std::cout << "[Core] Configuration reloaded successfully.\n";
+            } else {
+                std::cerr << "[Core] Failed to reload config from " << config_path << "\n";
+            }
+        }
+
         auto now_p = std::chrono::steady_clock::now();
         double render_time_sec = std::chrono::duration<double>(now_p - program_start_time).count();
+
 
         // --- CHECK POWER SAVE SCHEDULE ---
         bool should_blank = false;
@@ -615,6 +758,31 @@ int main(int argc, char** argv) {
         }
         // ALSA is now processed iteratively inside video_decoder->render() via packet interleaving
 
+        // --- DRAW CONFIG PORTAL URL & QR CODE ---
+        if (!headless_mode && http_server) {
+            if (http_server->has_qr_code_updates()) {
+                auto qr_img = http_server->get_qr_code_image();
+                if (qr_img.size > 0) {
+                    if (qr_texture > 0) {
+                        renderer->delete_texture(qr_texture);
+                    }
+                    qr_texture = renderer->create_texture(qr_img.rgba_pixels.data(), qr_img.size, qr_img.size, 4);
+                }
+            }
+
+            if (qr_texture > 0) {
+                float aspect = (float)renderer->width() / renderer->height();
+                float qr_w = 0.035f;
+                float qr_h = qr_w * aspect;
+                renderer->draw_quad(qr_texture, 0.03f, 0.03f, qr_w, qr_h);
+                
+                text_renderer->set_pixel_size(0, 18);
+                if (auto glyphs = text_renderer->shape_text("Config Portal: " + http_server->get_web_address())) {
+                    renderer->draw_text(glyphs.value(), 0.03f + qr_w + 0.01f, 0.066f, 1.0f, 0.4f, 0.7f, 1.0f, 0.8f);
+                }
+            }
+        }
+
         // Manual screenshot trigger via SIGUSR1
         if (g_screenshot_requested) {
             if (auto cap_res = screenshot_module->capture(display->width(), display->height()); cap_res) {
@@ -657,6 +825,12 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "\n[Core] Shutting down gracefully...\n";
+    if (http_server) {
+        http_server->stop();
+    }
+    if (qr_texture > 0 && renderer) {
+        renderer->delete_texture(qr_texture);
+    }
     curl_global_cleanup();
     return 0;
 }

@@ -98,7 +98,15 @@ std::vector<std::string> ConfigValidator::validate(const AppConfig& config) {
         validate_time(config.power_save.end_time, "end_time");
     }
 
+    // 6. HTTP Server validation
+    if (config.http_server.enabled) {
+        if (config.http_server.port < 1024 || config.http_server.port > 65535) {
+            errors.push_back("http_server.port out of range [1024, 65535]: " + std::to_string(config.http_server.port));
+        }
+    }
+
     return errors;
 }
+
 
 } // namespace nuc_display::modules

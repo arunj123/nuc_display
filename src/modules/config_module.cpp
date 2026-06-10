@@ -239,6 +239,11 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     ps["end_time"] = config.power_save.end_time;
     j["power_save"] = ps;
 
+    nlohmann::json hs;
+    hs["enabled"] = config.http_server.enabled;
+    hs["port"] = config.http_server.port;
+    j["http_server"] = hs;
+
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -327,6 +332,13 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 config.power_save.enabled = ps.value("enabled", false);
                 config.power_save.start_time = ps.value("start_time", "23:00");
                 config.power_save.end_time = ps.value("end_time", "07:00");
+            }
+
+            // Parse http_server
+            if (j.contains("http_server") && j["http_server"].is_object()) {
+                auto& hs = j["http_server"];
+                config.http_server.enabled = hs.value("enabled", true);
+                config.http_server.port = hs.value("port", 8080);
             }
 
             // Parse global_keys
