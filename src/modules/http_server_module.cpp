@@ -807,10 +807,12 @@ HttpServerModule::~HttpServerModule() {
 }
 
 std::string HttpServerModule::get_web_address() const {
+    std::lock_guard<std::mutex> lock(ip_mutex_);
     return web_address_;
 }
 
 std::string HttpServerModule::get_ip_address() const {
+    std::lock_guard<std::mutex> lock(ip_mutex_);
     return ip_address_;
 }
 
@@ -897,7 +899,10 @@ std::string HttpServerModule::get_local_ip() const {
                 char ip_str[INET_ADDRSTRLEN];
                 if (inet_ntop(AF_INET, &name.sin_addr, ip_str, sizeof(ip_str))) {
                     close(sock);
-                    return ip_str;
+                    std::string ip(ip_str);
+                    if (!ip.empty() && ip != "127.0.0.1" && ip != "127.0.1.1" && ip.rfind("127.", 0) != 0) {
+                        return ip;
+                    }
                 }
             }
         }
@@ -906,29 +911,35 @@ std::string HttpServerModule::get_local_ip() const {
 
     // Fallback: search all interfaces using getifaddrs
     struct ifaddrs* ifAddrStruct = nullptr;
-    struct ifaddrs* ifa = nullptr;
-    void* tmpAddrPtr = nullptr;
     std::string ip = "127.0.0.1";
 
     if (getifaddrs(&ifAddrStruct) == 0) {
-        for (ifa = ifAddrStruct; ifa != nullptr; ifa = ifa->ifa_next) {
+        for (struct ifaddrs* ifa = ifAddrStruct; ifa != nullptr; ifa = ifa->ifa_next) {
             if (!ifa->ifa_addr) continue;
             
-            // Check it is IPv4 and not loopback
-            if (ifa->ifa_addr->sa_family == AF_INET) {
-                tmpAddrPtr = &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+            // Check it is IPv4 and active (UP)
+            if (ifa->ifa_addr->sa_family == AF_INET && (ifa->ifa_flags & IFF_UP)) {
+                void* tmpAddrPtr = &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
                 char addressBuffer[INET_ADDRSTRLEN];
-                inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN);
-                std::string interface_name = ifa->ifa_name;
-                
-                // Exclude loopback
-                if (interface_name != "lo" && strcmp(addressBuffer, "127.0.0.1") != 0) {
-                    ip = addressBuffer;
-                    break;
+                if (inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN)) {
+                    std::string address_str(addressBuffer);
+                    std::string interface_name = ifa->ifa_name;
+                    
+                    // Exclude loopback interfaces/addresses
+                    if (interface_name != "lo" && !(ifa->ifa_flags & IFF_LOOPBACK) && address_str.rfind("127.", 0) != 0) {
+                        // Exclude virtual/bridge interfaces (docker, br-, veth, virbr)
+                        if (interface_name.rfind("docker", 0) != 0 &&
+                            interface_name.rfind("br-", 0) != 0 &&
+                            interface_name.rfind("veth", 0) != 0 &&
+                            interface_name.rfind("virbr", 0) != 0) {
+                            ip = address_str;
+                            break;
+                        }
+                    }
                 }
             }
         }
-        if (ifAddrStruct) freeifaddrs(ifAddrStruct);
+        freeifaddrs(ifAddrStruct);
     }
     return ip;
 }
@@ -956,7 +967,10 @@ void HttpServerModule::listen_loop() {
             address.sin_port = htons(p);
             if (bind(server_fd_, (struct sockaddr*)&address, sizeof(address)) >= 0) {
                 port_ = p;
-                web_address_ = "http://" + ip_address_ + ":" + std::to_string(port_);
+                {
+                    std::lock_guard<std::mutex> lock(ip_mutex_);
+                    web_address_ = "http://" + ip_address_ + ":" + std::to_string(port_);
+                }
                 generate_qr_code(web_address_);
                 break;
             }
@@ -976,9 +990,37 @@ void HttpServerModule::listen_loop() {
         return;
     }
 
-    std::cout << "[HttpServer] Running on: " << web_address_ << "\n";
+    {
+        std::lock_guard<std::mutex> lock(ip_mutex_);
+        std::cout << "[HttpServer] Running on: " << web_address_ << "\n";
+    }
+
+    auto last_ip_check = std::chrono::steady_clock::now();
 
     while (running_) {
+        // Periodically check for IP address changes (every 5 seconds)
+        auto now_time = std::chrono::steady_clock::now();
+        if (now_time - last_ip_check >= std::chrono::seconds(5)) {
+            last_ip_check = now_time;
+            std::string new_ip = get_local_ip();
+            if (!new_ip.empty()) {
+                bool ip_changed = false;
+                std::string current_web_addr;
+                {
+                    std::lock_guard<std::mutex> lock(ip_mutex_);
+                    if (new_ip != ip_address_) {
+                        std::cout << "[HttpServer] IP address changed from " << ip_address_ << " to " << new_ip << "\n";
+                        ip_address_ = new_ip;
+                        web_address_ = "http://" + ip_address_ + ":" + std::to_string(port_);
+                        current_web_addr = web_address_;
+                        ip_changed = true;
+                    }
+                }
+                if (ip_changed) {
+                    generate_qr_code(current_web_addr);
+                }
+            }
+        }
         struct pollfd pfd;
         pfd.fd = server_fd_;
         pfd.events = POLLIN;

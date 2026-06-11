@@ -48,6 +48,7 @@ private:
 
     std::atomic<bool> qr_code_updated_{false};
     std::mutex qr_mutex_;
+    mutable std::mutex ip_mutex_;
     QrCodeImage qr_image_;
 };
 
