@@ -3,6 +3,7 @@
 #include "modules/config_module.hpp"
 #include "modules/config_validator.hpp"
 
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -287,8 +288,31 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 
         .grid-4 {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1.5rem;
+        }
+
+        .mockup-layer.selected {
+            border-color: var(--accent-secondary) !important;
+            box-shadow: 0 0 15px var(--accent-secondary-glow), inset 0 0 10px rgba(0, 242, 254, 0.2);
+            z-index: 1000 !important;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 12px;
+            height: 12px;
+            background: var(--accent-secondary);
+            cursor: se-resize;
+            border-top-left-radius: 4px;
+            box-shadow: 0 0 5px var(--accent-secondary-glow);
+            z-index: 1001;
+        }
+
+        .mockup-layer-video, .mockup-layer-camera {
+            cursor: move;
         }
 
         @media (max-width: 1100px) {
@@ -1071,6 +1095,34 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 <body>
     <div id="toastContainer"></div>
 
+    <!-- Visual Crop Modal -->
+    <div id="cropModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 9, 20, 0.85); backdrop-filter: blur(10px); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="glass-panel" style="width: 90%; max-width: 700px; padding: 2rem; position: relative; border-color: rgba(138, 43, 226, 0.3); background: rgba(22, 18, 42, 0.95);">
+            <h2 id="cropModalTitle" style="margin-bottom: 1rem; font-size: 1.25rem;">Visual Crop Editor</h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Drag and resize the cropping boundary box over the 16:9 source aspect frame.</p>
+            
+            <div id="cropWorkspace" style="width: 100%; aspect-ratio: 16 / 9; background: #06050e; border: 2px solid #231d42; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 1.5rem;">
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.15; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; letter-spacing: 2px; color: white;">
+                    SOURCE MEDIA FRAME
+                </div>
+                <div id="cropBox" style="position: absolute; border: 2px dashed var(--accent-secondary); background: rgba(0, 242, 254, 0.08); box-shadow: 0 0 15px rgba(0, 242, 254, 0.2); cursor: move;">
+                    <div id="cropBoxLabel" style="position: absolute; top: 4px; left: 6px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 4px; border-radius: 3px; color: var(--accent-secondary); pointer-events: none;">Crop Region</div>
+                    <div class="resize-handle" id="cropResizeHandle"></div>
+                </div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary);">
+                    X: <span id="cropVal-x">0.00</span> | Y: <span id="cropVal-y">0.00</span> | W: <span id="cropVal-w">1.00</span> | H: <span id="cropVal-h">1.00</span>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-secondary" onclick="closeCropEditor(false)">Cancel</button>
+                    <button class="btn" onclick="closeCropEditor(true)">Apply Crop Coordinates</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Sidebar Navigation -->
         <aside>
@@ -1093,6 +1145,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         <rect x="3" y="14" width="7" height="7"></rect>
                     </svg>
                     <span>Dashboard</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-media')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="9" y1="3" x2="9" y2="21"></line>
+                        <line x1="9" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="15" x2="21" y2="15"></line>
+                    </svg>
+                    <span>Media Manager</span>
                 </li>
                 <li class="nav-item" onclick="switchTab('tab-location')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1207,6 +1268,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                             <p id="statsStocks">0 Tracked</p>
                         </div>
                     </div>
+                    <div class="stats-card" onclick="switchTab('tab-media')" style="cursor:pointer;">
+                        <div class="stats-icon">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        </div>
+                        <div class="stats-info">
+                            <h3>Media Files</h3>
+                            <p id="statsMedia">0 Stored</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mockup-container">
@@ -1216,6 +1286,54 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     <div class="mockup-screen">
                         <div class="mockup-grid"></div>
                         <div id="mockupLayersContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Media Manager Tab -->
+            <div id="tab-media" class="tab-panel">
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent-secondary);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        Upload Media Resources
+                    </h2>
+                    
+                    <div id="upload-zone" style="border: 2px dashed rgba(0, 242, 254, 0.3); border-radius: 14px; padding: 2.5rem; text-align: center; background: rgba(0, 242, 254, 0.01); cursor: pointer; transition: var(--transition);">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent-secondary); margin-bottom: 0.75rem; filter:drop-shadow(0 0 5px var(--accent-secondary-glow));"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <p style="font-weight:600; font-size:1rem; margin-bottom:0.25rem;">Drag & drop video/audio media here, or click to select</p>
+                        <p style="font-size:0.8rem; color:var(--text-secondary);">Uploaded resources are placed directly inside target device assets directory</p>
+                        <input type="file" id="media-file-input" style="display: none;">
+                    </div>
+                    
+                    <div id="upload-progress-container" style="display: none; margin-top: 1.5rem; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); padding:1rem; border-radius:10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                            <span id="upload-filename" style="font-weight: 600; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:70%;">resource.mp4</span>
+                            <span id="upload-percentage" style="font-family:monospace; font-weight:700; color:var(--accent-secondary);">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                            <div id="upload-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(to right, var(--accent-secondary), var(--accent-primary)); transition: width 0.1s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent-primary);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        Stored Media Assets Table
+                    </h2>
+                    <div style="overflow-x:auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size:0.9rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: 0.8rem; text-transform:uppercase; letter-spacing:0.5px;">
+                                    <th style="padding: 1rem;">Asset Filename</th>
+                                    <th style="padding: 1rem;">File Size</th>
+                                    <th style="padding: 1rem; text-align: right;">Operations</th>
+                                </tr>
+                            </thead>
+                            <tbody id="media-files-list">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1447,6 +1565,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 
     <script>
         let fullConfig = null;
+        let selectedLayer = null;
 
         // Key Name List mapped dynamically
         const VALID_KEYS = [
@@ -1485,6 +1604,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             // Header titles update
             const titles = {
                 'tab-dashboard': ['Dashboard Overview', 'General state and display preview mockup'],
+                'tab-media': ['Media Management', 'Upload and organize media resources on the NUC device'],
                 'tab-location': ['Location & Scheduling', 'Setup city coordinates and power save intervals'],
                 'tab-videos': ['Video Region Decoders', 'Assign video sources, coordinates, and triggers for each viewport'],
                 'tab-cameras': ['V4L2 Cameras', 'Configure camera hardware devices and layout grids'],
@@ -1500,6 +1620,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             // Layout Preview redraw when switching back to dashboard
             if (tabId === 'tab-dashboard') {
                 updateLayoutPreview();
+            } else if (tabId === 'tab-media') {
+                loadMediaFiles();
             }
         }
 
@@ -1574,6 +1696,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             renderVideosAccordion();
             renderCamerasList();
             renderLayoutLayersList();
+            loadMediaFiles();
 
             // Populate Key selectors
             document.getElementById('keyHideVideos').value = fullConfig.global_keys.hide_videos || '';
@@ -1755,6 +1878,11 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                     <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin: 1.5rem 0 1rem 0;">Source Media Crop Region</h4>
                                     
                                     ${renderCropCoordSliders(index, 'videos', v)}
+
+                                    <button class="btn btn-secondary btn-small" onclick="openCropEditor('videos', ${index})" style="margin-top: 1rem; width: 100%; gap: 0.4rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
+                                        Open Visual Crop Editor
+                                    </button>
                                 </div>
                             </div>
 
@@ -1968,6 +2096,11 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                 
                                 <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin:1.5rem 0 1rem 0;">Source Sensor Crop Rect</h4>
                                 ${renderCropCoordSliders(index, 'cameras', cam)}
+
+                                <button class="btn btn-secondary btn-small" onclick="openCropEditor('cameras', ${index})" style="margin-top: 1rem; width: 100%; gap: 0.4rem;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
+                                    Open Visual Crop Editor
+                                </button>
                             </div>
                         </div>
                     `;
@@ -2086,8 +2219,6 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             container.innerHTML = '';
 
             // Draw order: first = behind, last = on top.
-            // Absolute positioning DOM order renders later elements on top of earlier ones.
-            // So rendering in order of index matches OpenGL overlays perfectly.
             fullConfig.layout.forEach((layer) => {
                 let div = document.createElement('div');
                 div.className = 'mockup-layer';
@@ -2131,7 +2262,23 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         div.style.width = `${v.w * 100}%`;
                         div.style.height = `${v.h * 100}%`;
                         div.innerHTML = `<span>Video ${layer.video_index}</span>`;
-                        div.onclick = () => { switchTab('tab-videos'); document.getElementById(`video-accordion-${layer.video_index}`).classList.add('open'); };
+                        
+                        if (selectedLayer && selectedLayer.type === 'video' && selectedLayer.index === layer.video_index) {
+                            div.classList.add('selected');
+                            const handle = document.createElement('div');
+                            handle.className = 'resize-handle';
+                            div.appendChild(handle);
+                        }
+                        
+                        div.addEventListener('click', (e) => {
+                            if (!e.defaultPrevented) {
+                                switchTab('tab-videos');
+                                const acc = document.getElementById(`video-accordion-${layer.video_index}`);
+                                if (acc) acc.classList.add('open');
+                            }
+                        });
+
+                        setupLayerInteractions(div, container, layer, v);
                         container.appendChild(div);
                     }
                 } 
@@ -2144,10 +2291,103 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         div.style.width = `${c.w * 100}%`;
                         div.style.height = `${c.h * 100}%`;
                         div.innerHTML = `<span>Camera ${layer.camera_index}</span>`;
-                        div.onclick = () => switchTab('tab-cameras');
+                        
+                        if (selectedLayer && selectedLayer.type === 'camera' && selectedLayer.index === layer.camera_index) {
+                            div.classList.add('selected');
+                            const handle = document.createElement('div');
+                            handle.className = 'resize-handle';
+                            div.appendChild(handle);
+                        }
+                        
+                        div.addEventListener('click', (e) => {
+                            if (!e.defaultPrevented) {
+                                switchTab('tab-cameras');
+                            }
+                        });
+
+                        setupLayerInteractions(div, container, layer, c);
                         container.appendChild(div);
                     }
                 }
+            });
+        }
+
+        function setupLayerInteractions(div, container, layer, item) {
+            div.addEventListener('mousedown', (e) => {
+                selectedLayer = { type: layer.type, index: layer.type === 'video' ? layer.video_index : layer.camera_index };
+                
+                document.querySelectorAll('.mockup-layer').forEach(l => l.classList.remove('selected'));
+                document.querySelectorAll('.resize-handle').forEach(h => h.remove());
+                
+                div.classList.add('selected');
+                const handle = document.createElement('div');
+                handle.className = 'resize-handle';
+                div.appendChild(handle);
+                
+                let isResizing = (e.target.classList.contains('resize-handle'));
+                let isDragging = !isResizing;
+                
+                const rect = container.getBoundingClientRect();
+                const startX = e.clientX;
+                const startY = e.clientY;
+                
+                const startLeft = item.x * rect.width;
+                const startTop = item.y * rect.height;
+                const startWidth = item.w * rect.width;
+                const startHeight = item.h * rect.height;
+                
+                let moved = false;
+                
+                const onMouseMove = (moveEv) => {
+                    moved = true;
+                    const dx = moveEv.clientX - startX;
+                    const dy = moveEv.clientY - startY;
+                    const currentRect = container.getBoundingClientRect();
+                    
+                    if (isDragging) {
+                        let newLeft = startLeft + dx;
+                        let newTop = startTop + dy;
+                        
+                        newLeft = Math.max(0, Math.min(currentRect.width - startWidth, newLeft));
+                        newTop = Math.max(0, Math.min(currentRect.height - startHeight, newTop));
+                        
+                        item.x = parseFloat((newLeft / currentRect.width).toFixed(2));
+                        item.y = parseFloat((newTop / currentRect.height).toFixed(2));
+                    } else if (isResizing) {
+                        let newWidth = startWidth + dx;
+                        let newHeight = startHeight + dy;
+                        
+                        newWidth = Math.max(currentRect.width * 0.05, Math.min(currentRect.width - startLeft, newWidth));
+                        newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
+                        
+                        item.w = parseFloat((newWidth / currentRect.width).toFixed(2));
+                        item.h = parseFloat((newHeight / currentRect.height).toFixed(2));
+                    }
+                    
+                    div.style.left = `${item.x * 100}%`;
+                    div.style.top = `${item.y * 100}%`;
+                    div.style.width = `${item.w * 100}%`;
+                    div.style.height = `${item.h * 100}%`;
+                    
+                    updateUIFieldsForLayer(layer.type, selectedLayer.index);
+                };
+                
+                const onMouseUp = (upEv) => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    
+                    if (moved) {
+                        upEv.preventDefault();
+                        div.addEventListener('click', function captureClick(clickEv) {
+                            clickEv.stopPropagation();
+                            clickEv.preventDefault();
+                            div.removeEventListener('click', captureClick, true);
+                        }, true);
+                    }
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
             });
         }
 
@@ -2304,8 +2544,321 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             }
         }
 
+        function updateUIFieldsForLayer(type, idx) {
+            const item = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
+            const typeStr = type === 'video' ? 'videos' : 'cameras';
+            ['x', 'y', 'w', 'h'].forEach(c => {
+                const slider = document.querySelector(`input[oninput*="updateCoordSlider('${typeStr}', ${idx}, '${c}'"]`);
+                if (slider) {
+                    slider.value = item[c];
+                }
+                const label = document.getElementById(`${typeStr}-${idx}-val-${c}`);
+                if (label) {
+                    label.textContent = item[c].toFixed(2);
+                }
+            });
+        }
+
+        async function loadMediaFiles() {
+            try {
+                const res = await fetch('/api/media');
+                if (!res.ok) throw new Error('API return code failed');
+                const files = await res.json();
+                
+                const statsMedia = document.getElementById('statsMedia');
+                if (statsMedia) {
+                    statsMedia.textContent = `${files.length} Stored`;
+                }
+                
+                const list = document.getElementById('media-files-list');
+                if (list) {
+                    list.innerHTML = '';
+                    if (files.length === 0) {
+                        list.innerHTML = `
+                            <tr>
+                                <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                    No media files uploaded yet. Drag & drop files above to populate.
+                                </td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    
+                    files.forEach(file => {
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid var(--border-color)';
+                        
+                        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                        const relativePath = `assets/media/${file.name}`;
+                        
+                        tr.innerHTML = `
+                            <td style="padding: 1rem; font-weight: 500;">${file.name}</td>
+                            <td style="padding: 1rem; color: var(--text-secondary);">${sizeMB} MB</td>
+                            <td style="padding: 1rem; text-align: right;">
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <button class="btn btn-secondary btn-small" onclick="navigator.clipboard.writeText('${relativePath}'); showToast('Path Copied', 'Copied relative media path to clipboard.', 'info');">Copy Path</button>
+                                    <a href="/api/media/download?file=${encodeURIComponent(file.name)}" class="btn btn-cyan btn-small" style="text-decoration: none; color: #0b0914;">Download</a>
+                                    <button class="btn btn-danger btn-small" onclick="deleteMediaFile('${file.name}')">Delete</button>
+                                </div>
+                            </td>
+                        `;
+                        list.appendChild(tr);
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Failed to load media', 'Could not query uploaded media from backend.', 'error');
+            }
+        }
+        
+        async function deleteMediaFile(filename) {
+            if (!confirm(`Are you sure you want to permanently delete "${filename}"?`)) return;
+            try {
+                const res = await fetch('/api/media/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: filename })
+                });
+                if (res.ok) {
+                    showToast('File Deleted', `Successfully removed "${filename}" from media storage.`, 'success');
+                    loadMediaFiles();
+                } else {
+                    const data = await res.json();
+                    showToast('Delete Failed', data.error || 'Server error deleting file.', 'error');
+                }
+            } catch (err) {
+                showToast('Delete Connection Error', 'Failed to reach backend delete endpoint.', 'error');
+            }
+        }
+        
+        function initMediaUploader() {
+            const zone = document.getElementById('upload-zone');
+            const input = document.getElementById('media-file-input');
+            const progressContainer = document.getElementById('upload-progress-container');
+            const progressFilename = document.getElementById('upload-filename');
+            const percentageText = document.getElementById('upload-percentage');
+            const progressBar = document.getElementById('upload-progress-bar');
+            
+            if (!zone || !input) return;
+            
+            zone.onclick = () => input.click();
+            
+            zone.ondragover = (e) => {
+                e.preventDefault();
+                zone.style.borderColor = 'var(--accent-secondary)';
+                zone.style.background = 'rgba(0, 242, 254, 0.04)';
+            };
+            
+            zone.ondragleave = () => {
+                zone.style.borderColor = 'rgba(138, 43, 226, 0.4)';
+                zone.style.background = 'rgba(138, 43, 226, 0.02)';
+            };
+            
+            zone.ondrop = (e) => {
+                e.preventDefault();
+                zone.style.borderColor = 'rgba(138, 43, 226, 0.4)';
+                zone.style.background = 'rgba(138, 43, 226, 0.02)';
+                if (e.dataTransfer.files.length > 0) {
+                    uploadFile(e.dataTransfer.files[0]);
+                }
+            };
+            
+            input.onchange = () => {
+                if (input.files.length > 0) {
+                    uploadFile(input.files[0]);
+                    input.value = ''; // Reset
+                }
+            };
+            
+            function uploadFile(file) {
+                progressContainer.style.display = 'block';
+                progressFilename.textContent = file.name;
+                percentageText.textContent = '0%';
+                progressBar.style.width = '0%';
+                
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/upload', true);
+                xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+                
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        percentageText.textContent = `${pct}%`;
+                        progressBar.style.width = `${pct}%`;
+                    }
+                };
+                
+                xhr.onload = () => {
+                    progressContainer.style.display = 'none';
+                    if (xhr.status === 200) {
+                        showToast('Upload Complete', `Successfully uploaded "${file.name}".`, 'success');
+                        loadMediaFiles();
+                    } else {
+                        let errorMsg = 'Upload failed';
+                        try {
+                            const resp = JSON.parse(xhr.responseText);
+                            errorMsg = resp.error || errorMsg;
+                        } catch (e) {}
+                        showToast('Upload Failed', errorMsg, 'error');
+                    }
+                };
+                
+                xhr.onerror = () => {
+                    progressContainer.style.display = 'none';
+                    showToast('Upload Network Error', 'Failed to communicate with media server.', 'error');
+                };
+                
+                xhr.send(file);
+            }
+        }
+
+        let activeCropTarget = null; // { type: 'videos'|'cameras', index: i }
+        let currentCropCoords = { x: 0, y: 0, w: 1, h: 1 };
+        
+        function openCropEditor(type, idx) {
+            activeCropTarget = { type, index: idx };
+            const item = fullConfig[type][idx];
+            
+            currentCropCoords.x = item.src_x !== undefined ? item.src_x : 0;
+            currentCropCoords.y = item.src_y !== undefined ? item.src_y : 0;
+            currentCropCoords.w = item.src_w !== undefined ? item.src_w : 1;
+            currentCropCoords.h = item.src_h !== undefined ? item.src_h : 1;
+            
+            const titleEl = document.getElementById('cropModalTitle');
+            if (titleEl) {
+                titleEl.textContent = `Visual Crop Editor - ${type === 'videos' ? 'Video Player' : 'Camera Stream'} Slot #${idx}`;
+            }
+            
+            const modal = document.getElementById('cropModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+            
+            updateCropBoxVisuals();
+            initCropBoxInteractions();
+        }
+        
+        function updateCropBoxVisuals() {
+            const cropBox = document.getElementById('cropBox');
+            if (cropBox) {
+                cropBox.style.left = `${currentCropCoords.x * 100}%`;
+                cropBox.style.top = `${currentCropCoords.y * 100}%`;
+                cropBox.style.width = `${currentCropCoords.w * 100}%`;
+                cropBox.style.height = `${currentCropCoords.h * 100}%`;
+            }
+            
+            const valX = document.getElementById('cropVal-x');
+            const valY = document.getElementById('cropVal-y');
+            const valW = document.getElementById('cropVal-w');
+            const valH = document.getElementById('cropVal-h');
+            if (valX) valX.textContent = currentCropCoords.x.toFixed(2);
+            if (valY) valY.textContent = currentCropCoords.y.toFixed(2);
+            if (valW) valW.textContent = currentCropCoords.w.toFixed(2);
+            if (valH) valH.textContent = currentCropCoords.h.toFixed(2);
+        }
+        
+        function initCropBoxInteractions() {
+            const workspace = document.getElementById('cropWorkspace');
+            const cropBox = document.getElementById('cropBox');
+            const handle = document.getElementById('cropResizeHandle');
+            
+            if (!workspace || !cropBox || !handle) return;
+            
+            let isDragging = false;
+            let isResizing = false;
+            let startX, startY, startLeft, startTop, startWidth, startHeight;
+            
+            cropBox.onmousedown = (e) => {
+                e.preventDefault();
+                const rect = workspace.getBoundingClientRect();
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                startLeft = currentCropCoords.x * rect.width;
+                startTop = currentCropCoords.y * rect.height;
+                startWidth = currentCropCoords.w * rect.width;
+                startHeight = currentCropCoords.h * rect.height;
+                
+                if (e.target === handle) {
+                    isResizing = true;
+                } else {
+                    isDragging = true;
+                }
+                
+                const onMouseMove = (moveEv) => {
+                    const dx = moveEv.clientX - startX;
+                    const dy = moveEv.clientY - startY;
+                    const currentRect = workspace.getBoundingClientRect();
+                    
+                    if (isDragging) {
+                        let newLeft = startLeft + dx;
+                        let newTop = startTop + dy;
+                        
+                        newLeft = Math.max(0, Math.min(currentRect.width - startWidth, newLeft));
+                        newTop = Math.max(0, Math.min(currentRect.height - startHeight, newTop));
+                        
+                        currentCropCoords.x = parseFloat((newLeft / currentRect.width).toFixed(2));
+                        currentCropCoords.y = parseFloat((newTop / currentRect.height).toFixed(2));
+                    } else if (isResizing) {
+                        let newWidth = startWidth + dx;
+                        let newHeight = startHeight + dy;
+                        
+                        newWidth = Math.max(currentRect.width * 0.05, Math.min(currentRect.width - startLeft, newWidth));
+                        newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
+                        
+                        currentCropCoords.w = parseFloat((newWidth / currentRect.width).toFixed(2));
+                        currentCropCoords.h = parseFloat((newHeight / currentRect.height).toFixed(2));
+                    }
+                    
+                    updateCropBoxVisuals();
+                };
+                
+                const onMouseUp = () => {
+                    isDragging = false;
+                    isResizing = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+        }
+        
+        function closeCropEditor(apply) {
+            if (apply && activeCropTarget) {
+                const { type, index } = activeCropTarget;
+                const item = fullConfig[type][index];
+                item.src_x = currentCropCoords.x;
+                item.src_y = currentCropCoords.y;
+                item.src_w = currentCropCoords.w;
+                item.src_h = currentCropCoords.h;
+                
+                // Sync to sliders
+                ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
+                    const slider = document.querySelector(`input[oninput*="updateCoordSlider('${type}', ${index}, '${c}'"]`);
+                    if (slider) {
+                        slider.value = item[c];
+                    }
+                    const label = document.getElementById(`${type}-${index}-val-${c}`);
+                    if (label) {
+                        label.textContent = item[c].toFixed(2);
+                    }
+                });
+                
+                showToast('Crop Coordinates Applied', 'Successfully mapped to input fields.', 'success');
+            }
+            
+            const modal = document.getElementById('cropModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            activeCropTarget = null;
+        }
+
         // Initializer
         fetchConfig();
+        initMediaUploader();
     </script>
 </body>
 </html>)html";
@@ -2560,9 +3113,9 @@ void HttpServerModule::listen_loop() {
             continue;
         }
 
-        // Set timeout on client socket (2s)
+        // Set timeout on client socket (30s to allow file uploads)
         struct timeval tv;
-        tv.tv_sec = 2;
+        tv.tv_sec = 30;
         tv.tv_usec = 0;
         setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
@@ -2610,6 +3163,19 @@ void HttpServerModule::listen_loop() {
             }
         }
 
+        // Parse X-Filename for POST upload
+        std::string x_filename = "";
+        size_t xf_pos = request.find("X-Filename:");
+        if (xf_pos != std::string::npos) {
+            xf_pos += 11;
+            size_t end_line = request.find("\r\n", xf_pos);
+            if (end_line != std::string::npos) {
+                x_filename = request.substr(xf_pos, end_line - xf_pos);
+                x_filename.erase(0, x_filename.find_first_not_of(" \t"));
+                x_filename.erase(x_filename.find_last_not_of(" \t") + 1);
+            }
+        }
+
         std::string body = request.substr(body_pos);
         while (body.length() < content_len) {
             int to_read = content_len - body.length();
@@ -2631,7 +3197,194 @@ void HttpServerModule::listen_loop() {
                    << "Content-Length: " << response_body.length() << "\r\n"
                    << "Connection: close\r\n\r\n";
             response_headers = header.str();
-        } 
+        }
+        else if (method == "GET" && uri == "/api/media") {
+            try {
+                std::filesystem::create_directories("assets/media");
+                nlohmann::json files_arr = nlohmann::json::array();
+                
+                for (const auto& entry : std::filesystem::directory_iterator("assets/media")) {
+                    if (entry.is_regular_file()) {
+                        nlohmann::json f;
+                        f["name"] = entry.path().filename().string();
+                        f["size"] = entry.file_size();
+                        files_arr.push_back(f);
+                    }
+                }
+                
+                response_body = files_arr.dump();
+                std::stringstream header;
+                header << "HTTP/1.1 200 OK\r\n"
+                       << "Content-Type: application/json; charset=utf-8\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
+                std::stringstream header;
+                header << "HTTP/1.1 500 Internal Error\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
+        else if (method == "POST" && uri == "/api/upload") {
+            try {
+                if (x_filename.empty()) {
+                    response_body = "{\"error\":\"Missing X-Filename header\"}";
+                    std::stringstream header;
+                    header << "HTTP/1.1 400 Bad Request\r\n"
+                           << "Content-Type: application/json\r\n"
+                           << "Content-Length: " << response_body.length() << "\r\n"
+                           << "Connection: close\r\n\r\n";
+                    response_headers = header.str();
+                } else {
+                    std::filesystem::create_directories("assets/media");
+                    std::string clean_filename = std::filesystem::path(x_filename).filename().string();
+                    std::string save_path = "assets/media/" + clean_filename;
+                    
+                    std::ofstream out_file(save_path, std::ios::binary);
+                    if (out_file.is_open()) {
+                        out_file.write(body.data(), body.size());
+                        out_file.close();
+                        response_body = "{\"status\":\"ok\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 200 OK\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    } else {
+                        response_body = "{\"error\":\"Failed to open output file\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 500 Internal Error\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    }
+                }
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
+                std::stringstream header;
+                header << "HTTP/1.1 500 Internal Error\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
+        else if (method == "GET" && uri.rfind("/api/media/download", 0) == 0) {
+            try {
+                size_t param_pos = uri.find("?file=");
+                if (param_pos != std::string::npos) {
+                    std::string filename = uri.substr(param_pos + 6);
+                    std::string decoded = "";
+                    for (size_t i = 0; i < filename.length(); ++i) {
+                        if (filename[i] == '%' && i + 2 < filename.length()) {
+                            std::string hex = filename.substr(i + 1, 2);
+                            try {
+                                char chr = (char)std::stoul(hex, nullptr, 16);
+                                decoded += chr;
+                                i += 2;
+                            } catch (...) {
+                                decoded += filename[i];
+                            }
+                        } else {
+                            decoded += filename[i];
+                        }
+                    }
+                    filename = decoded;
+                    filename = std::filesystem::path(filename).filename().string();
+                    std::string file_path = "assets/media/" + filename;
+                    
+                    std::ifstream f(file_path, std::ios::binary);
+                    if (f.is_open()) {
+                        std::stringstream buffer;
+                        buffer << f.rdbuf();
+                        response_body = buffer.str();
+                        
+                        std::stringstream header;
+                        header << "HTTP/1.1 200 OK\r\n"
+                               << "Content-Type: application/octet-stream\r\n"
+                               << "Content-Disposition: attachment; filename=\"" << filename << "\"\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    } else {
+                        response_body = "{\"error\":\"File not found\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 404 Not Found\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    }
+                } else {
+                    response_body = "{\"error\":\"Missing file parameter\"}";
+                    std::stringstream header;
+                    header << "HTTP/1.1 400 Bad Request\r\n"
+                           << "Content-Type: application/json\r\n"
+                           << "Content-Length: " << response_body.length() << "\r\n"
+                           << "Connection: close\r\n\r\n";
+                    response_headers = header.str();
+                }
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
+                std::stringstream header;
+                header << "HTTP/1.1 500 Internal Error\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
+        else if (method == "POST" && uri == "/api/media/delete") {
+            try {
+                auto del_json = nlohmann::json::parse(body);
+                if (del_json.contains("file") && del_json["file"].is_string()) {
+                    std::string filename = del_json["file"];
+                    filename = std::filesystem::path(filename).filename().string();
+                    std::string file_path = "assets/media/" + filename;
+                    
+                    if (std::filesystem::exists(file_path)) {
+                        std::filesystem::remove(file_path);
+                        response_body = "{\"status\":\"ok\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 200 OK\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    } else {
+                        response_body = "{\"error\":\"File not found\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 404 Not Found\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    }
+                } else {
+                    response_body = "{\"error\":\"Missing file field\"}";
+                    std::stringstream header;
+                    header << "HTTP/1.1 400 Bad Request\r\n"
+                           << "Content-Type: application/json\r\n"
+                           << "Content-Length: " << response_body.length() << "\r\n"
+                           << "Connection: close\r\n\r\n";
+                    response_headers = header.str();
+                }
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
+                std::stringstream header;
+                header << "HTTP/1.1 500 Internal Error\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
         else if (method == "GET" && uri == "/api/config") {
             std::ifstream f(config_path_);
             if (f.is_open()) {

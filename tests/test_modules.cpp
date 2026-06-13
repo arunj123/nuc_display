@@ -498,6 +498,77 @@ TEST(NewsModuleTest, MalformedAndEmptyRSS) {
 
 #include "modules/http_server_module.hpp"
 #include "modules/input_module.hpp"
+#include <thread>
+#include <chrono>
+
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
+// Perform HTTP request using raw socket to bypass global Curl link-time stubs
+static std::string socket_http_request(const std::string& method, int port, const std::string& path, const std::string& body = "", const std::vector<std::string>& extra_headers = {}, long* response_code = nullptr) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return "";
+    
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        close(sock);
+        return "";
+    }
+    
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        close(sock);
+        return "";
+    }
+    
+    // Construct HTTP/1.1 request
+    std::stringstream req;
+    req << method << " " << path << " HTTP/1.1\r\n"
+        << "Host: 127.0.0.1:" << port << "\r\n"
+        << "Connection: close\r\n";
+        
+    for (const auto& h : extra_headers) {
+        req << h << "\r\n";
+    }
+    
+    if (!body.empty()) {
+        req << "Content-Length: " << body.length() << "\r\n";
+    }
+    req << "\r\n" << body;
+    
+    std::string request_str = req.str();
+    send(sock, request_str.c_str(), request_str.length(), 0);
+    
+    // Read raw HTTP response
+    std::string response;
+    char buffer[4096];
+    int n;
+    while ((n = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0) {
+        buffer[n] = '\0';
+        response.append(buffer, n);
+    }
+    close(sock);
+    
+    // Parse HTTP response code and split body
+    size_t header_end = response.find("\r\n\r\n");
+    if (header_end == std::string::npos) return "";
+    
+    std::string headers = response.substr(0, header_end);
+    std::string resp_body = response.substr(header_end + 4);
+    
+    if (response_code) {
+        size_t status_pos = headers.find("HTTP/1.1 ");
+        if (status_pos != std::string::npos) {
+            *response_code = std::stol(headers.substr(status_pos + 9, 3));
+        }
+    }
+    
+    return resp_body;
+}
 
 TEST(HttpServerModuleTest, BasicVerification) {
     InputModule input;
@@ -516,6 +587,78 @@ TEST(HttpServerModuleTest, BasicVerification) {
     EXPECT_GT(qr.size, 0);
     EXPECT_EQ(qr.rgba_pixels.size(), static_cast<size_t>(qr.size * qr.size * 4));
     EXPECT_FALSE(server.has_qr_code_updates());
+}
+
+TEST(HttpServerModuleTest, MediaManagementAPI) {
+    InputModule input;
+    std::atomic<bool> reload_flag{false};
+    
+    // Start server on a non-conflicting port
+    HttpServerModule server(&input, "config.json", reload_flag, 9991);
+    server.start();
+    
+    // Give the server a small moment to spin up the listening thread
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    // Clean up test file if it exists prior
+    std::remove("assets/media/test_upload.txt");
+    
+    // 1. GET /api/media (should contain listing or be empty)
+    long code = 0;
+    std::string res = socket_http_request("GET", 9991, "/api/media", "", {}, &code);
+    EXPECT_EQ(code, 200);
+    nlohmann::json files = nlohmann::json::parse(res);
+    EXPECT_TRUE(files.is_array());
+    
+    // 2. POST /api/upload
+    std::vector<std::string> headers = {
+        "X-Filename: test_upload.txt",
+        "Content-Type: application/octet-stream"
+    };
+    std::string content = "This is a test media asset file content.";
+    res = socket_http_request("POST", 9991, "/api/upload", content, headers, &code);
+    EXPECT_EQ(code, 200);
+    nlohmann::json upload_res = nlohmann::json::parse(res);
+    EXPECT_EQ(upload_res["status"], "ok");
+    
+    // Check that file was written to disk
+    std::ifstream in("assets/media/test_upload.txt");
+    ASSERT_TRUE(in.is_open());
+    std::string file_content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(file_content, content);
+    in.close();
+    
+    // 3. GET /api/media (should now contain test_upload.txt)
+    res = socket_http_request("GET", 9991, "/api/media", "", {}, &code);
+    EXPECT_EQ(code, 200);
+    files = nlohmann::json::parse(res);
+    bool found = false;
+    for (const auto& f : files) {
+        if (f["name"] == "test_upload.txt") {
+            found = true;
+            EXPECT_EQ(f["size"], content.length());
+        }
+    }
+    EXPECT_TRUE(found);
+    
+    // 4. GET /api/media/download?file=test_upload.txt
+    res = socket_http_request("GET", 9991, "/api/media/download?file=test_upload.txt", "", {}, &code);
+    EXPECT_EQ(code, 200);
+    EXPECT_EQ(res, content);
+    
+    // 5. POST /api/media/delete
+    nlohmann::json del_body;
+    del_body["file"] = "test_upload.txt";
+    res = socket_http_request("POST", 9991, "/api/media/delete", del_body.dump(), {"Content-Type: application/json"}, &code);
+    EXPECT_EQ(code, 200);
+    nlohmann::json del_res = nlohmann::json::parse(res);
+    EXPECT_EQ(del_res["status"], "ok");
+    
+    // Check that file was deleted from disk
+    std::ifstream in2("assets/media/test_upload.txt");
+    EXPECT_FALSE(in2.is_open());
+    
+    server.stop();
 }
 
 int main(int argc, char **argv) {
