@@ -21,7 +21,7 @@ public:
     ~NewsModule();
 
     // Blocking fetch (run in thread pool)
-    void update_headlines();
+    void update_headlines(const std::vector<std::string>& urls);
     
     // Render scrolling headlines in specified region
     void render(core::Renderer& renderer, TextRenderer& text_renderer, 

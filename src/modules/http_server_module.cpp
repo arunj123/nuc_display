@@ -32,21 +32,26 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NUC Display Console</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>NUC Display Dashboard Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-gradient: linear-gradient(135deg, #0f0c1b, #050508);
-            --panel-bg: rgba(20, 20, 30, 0.65);
-            --accent-cyan: #00f2fe;
-            --accent-purple: #7f00ff;
-            --text-primary: #f0f0f5;
-            --text-secondary: #a0a0b0;
-            --border: rgba(255, 255, 255, 0.08);
-            --border-focus: rgba(0, 242, 254, 0.5);
-            --danger: #ff4757;
-            --success: #2ed573;
-            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --bg-color: #0b0914;
+            --sidebar-bg: rgba(15, 12, 28, 0.7);
+            --panel-bg: rgba(22, 18, 42, 0.45);
+            --card-bg: rgba(255, 255, 255, 0.02);
+            --accent-primary: #8a2be2;
+            --accent-primary-glow: rgba(138, 43, 226, 0.3);
+            --accent-secondary: #00f2fe;
+            --accent-secondary-glow: rgba(0, 242, 254, 0.3);
+            --text-primary: #f5f4fa;
+            --text-secondary: #a3a0bd;
+            --border-color: rgba(255, 255, 255, 0.06);
+            --border-focus: rgba(0, 242, 254, 0.4);
+            --success-color: #2ed573;
+            --error-color: #ff4757;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
         }
 
         * {
@@ -56,8 +61,9 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-gradient);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at top left, #1c1435, var(--bg-color) 70%);
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -65,120 +71,419 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             overflow-x: hidden;
         }
 
-        header {
+        /* App Layout */
+        .app-container {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem 2rem;
-            background: rgba(10, 10, 15, 0.4);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
+            flex: 1;
+            min-height: 100vh;
         }
 
-        .logo {
+        /* Sidebar styling */
+        aside {
+            width: 280px;
+            background: var(--sidebar-bg);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem 1.5rem;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        .logo-area {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
             font-weight: 700;
             font-size: 1.25rem;
             letter-spacing: 0.5px;
-            background: linear-gradient(to right, var(--accent-cyan), #4facfe);
+            margin-bottom: 2.5rem;
+            background: linear-gradient(to right, var(--accent-secondary), #8a2be2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .logo svg {
-            stroke: var(--accent-cyan);
+        .logo-area svg {
+            stroke: var(--accent-secondary);
+            filter: drop-shadow(0 0 5px var(--accent-secondary-glow));
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: var(--transition);
+            border: 1px solid transparent;
+        }
+
+        .nav-item svg {
+            stroke: var(--text-secondary);
+            transition: var(--transition);
+        }
+
+        .nav-item:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-item:hover svg {
+            stroke: var(--text-primary);
+        }
+
+        .nav-item.active {
+            color: var(--text-primary);
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(0, 242, 254, 0.05));
+            border-color: rgba(138, 43, 226, 0.3);
+            box-shadow: inset 0 0 12px rgba(138, 43, 226, 0.1), 0 4px 20px rgba(0,0,0,0.15);
+        }
+
+        .nav-item.active svg {
+            stroke: var(--accent-secondary);
+            filter: drop-shadow(0 0 4px var(--accent-secondary-glow));
+        }
+
+        .nav-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1.5rem;
         }
 
         .status-badge {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.6rem;
             font-size: 0.85rem;
-            padding: 0.4rem 0.8rem;
-            background: rgba(0, 242, 254, 0.1);
-            border: 1px solid rgba(0, 242, 254, 0.2);
-            border-radius: 20px;
-            color: var(--accent-cyan);
-            font-weight: 500;
+            padding: 0.6rem 1rem;
+            background: rgba(0, 242, 254, 0.06);
+            border: 1px solid rgba(0, 242, 254, 0.15);
+            border-radius: 24px;
+            color: var(--accent-secondary);
+            font-weight: 600;
         }
 
         .status-dot {
             width: 8px;
             height: 8px;
-            background: var(--accent-cyan);
+            background: var(--accent-secondary);
             border-radius: 50%;
-            box-shadow: 0 0 8px var(--accent-cyan);
-            animation: pulse 1.8s infinite;
+            box-shadow: 0 0 8px var(--accent-secondary);
+            animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
-            0% { opacity: 0.5; }
+            0% { opacity: 0.4; }
             50% { opacity: 1; }
-            100% { opacity: 0.5; }
+            100% { opacity: 0.4; }
         }
 
-        .container {
+        /* Main content styling */
+        main {
+            margin-left: 280px;
             flex: 1;
-            max-width: 1400px;
-            width: 100%;
-            margin: 0 auto;
+            padding: 2rem 3rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            transition: var(--transition);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1.5rem;
+        }
+
+        .header-title h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        .save-btn-wrapper {
+            display: flex;
+            gap: 1rem;
+        }
+
+        /* Tab panel */
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            gap: 2rem;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .tab-panel.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards and Panels */
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
             padding: 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        .glass-panel h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .glass-panel h2 svg {
+            stroke: var(--text-secondary);
+        }
+
+        /* Grid elements */
+        .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 2rem;
         }
 
-        @media (max-width: 900px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .panel {
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            display: flex;
-            flex-direction: column;
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
         }
 
-        h2 {
-            font-size: 1.2rem;
-            font-weight: 600;
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1100px) {
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+            aside {
+                width: 80px;
+                padding: 2rem 0.5rem;
+                align-items: center;
+            }
+            aside .logo-area span, aside .nav-item span, aside .status-badge span {
+                display: none;
+            }
+            aside .nav-item {
+                justify-content: center;
+                width: 50px;
+                height: 50px;
+                padding: 0;
+            }
+            aside .status-badge {
+                justify-content: center;
+                width: 50px;
+                height: 50px;
+                padding: 0;
+                border-radius: 50%;
+            }
+            main {
+                margin-left: 80px;
+                padding: 2rem 1.5rem;
+            }
+        }
+
+        /* Widgets/Stats */
+        .stats-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 0.75rem;
-            color: var(--text-primary);
+            gap: 1rem;
+            transition: var(--transition);
         }
 
-        h2 svg {
-            stroke: var(--text-secondary);
+        .stats-card:hover {
+            border-color: rgba(0, 242, 254, 0.2);
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.04);
         }
 
+        .stats-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(138, 43, 226, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-primary);
+        }
+
+        .stats-card:nth-child(even) .stats-icon {
+            background: rgba(0, 242, 254, 0.1);
+            border: 1px solid rgba(0, 242, 254, 0.2);
+            color: var(--accent-secondary);
+        }
+
+        .stats-info h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .stats-info p {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-top: 0.2rem;
+        }
+
+        /* Visual Display Mockup */
+        .mockup-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            border-radius: 16px;
+        }
+
+        .mockup-screen {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #06050e;
+            border: 2px solid #231d42;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.8), 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .mockup-grid {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-size: 5% 8.88%;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        }
+
+        .mockup-layer {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 4px;
+            text-transform: uppercase;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .mockup-layer span {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            pointer-events: none;
+        }
+
+        .mockup-layer-weather {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        .mockup-layer-news {
+            background: rgba(255, 165, 0, 0.05);
+            border: 1px dashed rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+        }
+
+        .mockup-layer-stocks {
+            background: rgba(46, 213, 115, 0.05);
+            border: 1px dashed rgba(46, 213, 115, 0.2);
+            color: var(--success-color);
+        }
+
+        .mockup-layer-video {
+            background: rgba(138, 43, 226, 0.15);
+            border: 2px solid var(--accent-primary);
+            color: #e5bfff;
+            text-shadow: 0 0 8px rgba(138, 43, 226, 0.6);
+        }
+
+        .mockup-layer-camera {
+            background: rgba(0, 242, 254, 0.15);
+            border: 2px solid var(--accent-secondary);
+            color: #d1faff;
+            text-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+        }
+
+        /* Form elements */
         .form-group {
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
         }
 
         label {
             font-size: 0.85rem;
             color: var(--text-secondary);
-            font-weight: 500;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }
 
         input[type="text"], input[type="number"], select, textarea {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
             padding: 0.75rem 1rem;
             color: var(--text-primary);
             font-family: inherit;
@@ -189,181 +494,70 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         input:focus, select:focus, textarea:focus {
-            border-color: var(--accent-cyan);
-            background: rgba(255, 255, 255, 0.08);
-            box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
+            border-color: var(--accent-secondary);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 12px rgba(0, 242, 254, 0.15);
         }
 
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+        /* Sliders */
+        .slider-control-group {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: 0.5rem;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
             gap: 1rem;
         }
 
-        .btn {
-            background: linear-gradient(135deg, var(--accent-purple), #5b00c4);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 0.75rem 1.5rem;
-            font-weight: 600;
+        .slider-row input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent-secondary);
             cursor: pointer;
-            transition: var(--transition);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            font-size: 0.95rem;
         }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(127, 0, 255, 0.4);
-        }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn-cyan {
-            background: linear-gradient(135deg, var(--accent-cyan), #00c6ff);
-            color: #0b0c10;
-        }
-
-        .btn-cyan:hover {
-            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
-            box-shadow: none;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
-        }
-
-        /* Remote Control Styling */
-        .remote-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.75rem;
-        }
-
-        .remote-btn {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.25rem 0.5rem;
-            color: var(--text-primary);
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.4rem;
-            font-size: 0.8rem;
-        }
-
-        .remote-btn svg {
-            stroke: var(--text-secondary);
-            transition: var(--transition);
-        }
-
-        .remote-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: var(--accent-cyan);
-            transform: translateY(-2px);
-        }
-
-        .remote-btn:hover svg {
-            stroke: var(--accent-cyan);
-            transform: scale(1.1);
-        }
-
-        .remote-btn:active {
-            transform: translateY(0);
-        }
-
-        .remote-header {
-            grid-column: span 3;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-secondary);
-            margin: 0.5rem 0 0.2rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            padding-bottom: 0.25rem;
-        }
-
-        /* Dynamic Stock/Playlist items */
-        .list-items {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            max-height: 250px;
-            overflow-y: auto;
-            padding-right: 0.5rem;
-        }
-
-        .list-item {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border);
-            padding: 0.5rem;
-            border-radius: 8px;
-        }
-
-        .alert {
-            padding: 1rem;
-            border-radius: 8px;
+        .slider-row span {
+            font-family: monospace;
             font-size: 0.9rem;
-            display: none;
-            line-height: 1.4;
+            width: 45px;
+            text-align: right;
+            font-weight: 600;
         }
 
-        .alert-error {
-            background: rgba(255, 71, 87, 0.15);
-            border: 1px solid var(--danger);
-            color: #ff6b81;
-        }
-
-        .alert-success {
-            background: rgba(46, 213, 115, 0.15);
-            border: 1px solid var(--success);
-            color: #2ed573;
-        }
-
-        /* Power Save Toggle */
+        /* Toggle Switches */
         .toggle-container {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border);
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+
+        .toggle-container label {
+            color: var(--text-primary);
+            font-size: 0.95rem;
         }
 
         .switch {
             position: relative;
             display: inline-block;
-            width: 46px;
-            height: 24px;
+            width: 48px;
+            height: 26px;
         }
 
         .switch input { 
@@ -376,304 +570,1592 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(255,255,255,0.1);
-            transition: .4s;
-            border-radius: 24px;
-            border: 1px solid var(--border);
+            background-color: rgba(255,255,255,0.06);
+            transition: .3s;
+            border-radius: 26px;
+            border: 1px solid var(--border-color);
         }
 
         .slider:before {
             position: absolute;
             content: "";
-            height: 16px;
-            width: 16px;
+            height: 18px;
+            width: 18px;
             left: 3px;
             bottom: 3px;
-            background-color: white;
-            transition: .4s;
+            background-color: #f5f4fa;
+            transition: .3s;
             border-radius: 50%;
         }
 
         input:checked + .slider {
-            background-color: var(--accent-cyan);
-            border-color: var(--accent-cyan);
+            background-color: var(--accent-secondary);
+            border-color: var(--accent-secondary);
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
         }
 
         input:checked + .slider:before {
             transform: translateX(22px);
         }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, var(--accent-primary), #6002c4);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 0.8rem 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--accent-primary-glow);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-cyan {
+            background: linear-gradient(135deg, var(--accent-secondary), #00c6ff);
+            color: #0b0914;
+            border: none;
+        }
+
+        .btn-cyan:hover {
+            box-shadow: 0 6px 20px var(--accent-secondary-glow);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4757, #ff2e44);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 6px 20px rgba(255, 71, 87, 0.3);
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            border-radius: 8px;
+        }
+
+        /* Accordion panels for Videos */
+        .accordion-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .accordion-header {
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.01);
+            user-select: none;
+            transition: var(--transition);
+        }
+
+        .accordion-header:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .accordion-title-block {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .accordion-title-block h3 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .accordion-title-block .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(46, 213, 115, 0.1);
+            border: 1px solid rgba(46, 213, 115, 0.2);
+            color: var(--success-color);
+        }
+
+        .badge-inactive {
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid rgba(255, 71, 87, 0.2);
+            color: var(--error-color);
+        }
+
+        .accordion-arrow {
+            transition: var(--transition);
+        }
+
+        .accordion-item.open .accordion-arrow {
+            transform: rotate(180deg);
+        }
+
+        .accordion-content {
+            display: none;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .accordion-item.open .accordion-content {
+            display: block;
+        }
+
+        /* Dynamic lists */
+        .list-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .list-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid var(--border-color);
+            padding: 0.6rem;
+            border-radius: 10px;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.01);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Toast notifications */
+        #toastContainer {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            z-index: 1000;
+        }
+
+        .toast {
+            min-width: 300px;
+            max-width: 450px;
+            background: rgba(18, 15, 36, 0.95);
+            backdrop-filter: blur(10px);
+            border-left: 4px solid var(--accent-secondary);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: var(--transition);
+        }
+
+        @keyframes toastIn {
+            from { transform: translateX(100%) translateY(-10px); opacity: 0; }
+            to { transform: translateX(0) translateY(0); opacity: 1; }
+        }
+
+        .toast.hide {
+            transform: translateX(120%);
+            opacity: 0;
+        }
+
+        .toast-success { border-left-color: var(--success-color); }
+        .toast-error { border-left-color: var(--error-color); }
+        .toast-info { border-left-color: var(--accent-secondary); }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .toast-msg {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: 0;
+            margin-top: -2px;
+        }
+
+        .toast-close:hover {
+            color: var(--text-primary);
+        }
+
+        /* Virtual Remote Mobile Design */
+        .remote-phone {
+            max-width: 360px;
+            margin: 0 auto;
+            background: #0e0d16;
+            border: 4px solid #231d42;
+            border-radius: 40px;
+            padding: 2.5rem 1.5rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(255,255,255,0.02);
+            position: relative;
+        }
+
+        .remote-phone:before {
+            content: '';
+            position: absolute;
+            top: 12px; left: 50%;
+            transform: translateX(-50%);
+            width: 60px; height: 16px;
+            background: #231d42;
+            border-radius: 8px;
+        }
+
+        .remote-screen-title {
+            text-align: center;
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--accent-secondary);
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+            text-shadow: 0 0 8px var(--accent-secondary-glow);
+        }
+
+        .remote-dpad {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            margin: 1.5rem auto;
+            background: #171526;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        .dpad-btn {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.02);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+
+        .dpad-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--accent-secondary);
+        }
+
+        .dpad-btn:active {
+            transform: scale(0.92);
+        }
+
+        .dpad-up {
+            top: 8px; left: 65px; width: 50px; height: 45px;
+            border-radius: 12px 12px 0 0;
+        }
+        .dpad-down {
+            bottom: 8px; left: 65px; width: 50px; height: 45px;
+            border-radius: 0 0 12px 12px;
+        }
+        .dpad-left {
+            left: 8px; top: 65px; width: 45px; height: 50px;
+            border-radius: 12px 0 0 12px;
+        }
+        .dpad-right {
+            right: 8px; top: 65px; width: 45px; height: 50px;
+            border-radius: 0 12px 12px 0;
+        }
+        .dpad-center {
+            top: 60px; left: 60px; width: 60px; height: 60px;
+            background: #1f1b36;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            color: var(--accent-secondary);
+        }
+        .dpad-center:hover {
+            background: #252042;
+            box-shadow: 0 0 10px var(--accent-secondary-glow);
+        }
+
+        .remote-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .remote-title-divider {
+            grid-column: span 3;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin: 0.75rem 0 0.25rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 2px;
+            text-align: center;
+        }
+
+        .remote-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem 0.25rem;
+            color: var(--text-primary);
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+        }
+
+        .remote-btn svg {
+            stroke: var(--text-secondary);
+            transition: var(--transition);
+        }
+
+        .remote-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-secondary);
+            transform: translateY(-2px);
+        }
+
+        .remote-btn:hover svg {
+            stroke: var(--accent-secondary);
+            transform: scale(1.08);
+        }
+
+        .remote-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Layout reorder lists */
+        .layout-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .layout-list-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .layout-drag-handle {
+            color: var(--text-secondary);
+            cursor: grab;
+        }
+
+        .layout-type-badge {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-weight: 700;
+        }
+
+        .badge-weather { background: rgba(0, 198, 255, 0.1); color: #00c6ff; border: 1px solid rgba(0,198,255,0.2); }
+        .badge-stocks { background: rgba(46, 213, 115, 0.1); color: var(--success-color); border: 1px solid rgba(46,213,115,0.2); }
+        .badge-news { background: rgba(255, 165, 0, 0.1); color: #ffa500; border: 1px solid rgba(255,165,0,0.2); }
+        .badge-video { background: rgba(138, 43, 226, 0.1); color: #c38eff; border: 1px solid rgba(138,43,226,0.2); }
+        .badge-camera { background: rgba(0, 242, 254, 0.1); color: var(--accent-secondary); border: 1px solid rgba(0,242,254,0.2); }
+
+        .layout-actions {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .layout-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            cursor: pointer;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .layout-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-secondary);
+            color: var(--accent-secondary);
+        }
+
+        .layout-btn:disabled {
+            opacity: 0.2;
+            cursor: not-allowed;
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
     </style>
 </head>
 <body>
-    <header>
-        <div class="logo">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                <line x1="6" y1="18" x2="6.01" y2="18"></line>
-            </svg>
-            NUC DISPLAY ENGINE
-        </div>
-        <div class="status-badge">
-            <div class="status-dot"></div>
-            CONNECTED
-        </div>
-    </header>
+    <div id="toastContainer"></div>
 
-    <div class="container">
-        <!-- Configuration Panel -->
-        <div class="panel">
-            <h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside>
+            <div class="logo-area">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
                 </svg>
-                CONFIGURATION
-            </h2>
+                <span>NUC ENGINE</span>
+            </div>
+            
+            <ul class="nav-links">
+                <li class="nav-item active" onclick="switchTab('tab-dashboard')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-location')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    <span>Location & Power</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-videos')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                    </svg>
+                    <span>Video Regions</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-cameras')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    <span>Camera Inputs</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-stocks')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                    <span>Stocks & Feeds</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-layout')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                    <span>Layout & Keys</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('tab-remote')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                        <circle cx="12" cy="18" r="2"></circle>
+                        <line x1="12" y1="6" x2="12" y2="10"></line>
+                    </svg>
+                    <span>Virtual Remote</span>
+                </li>
+            </ul>
 
-            <div id="errorAlert" class="alert alert-error"></div>
-            <div id="successAlert" class="alert alert-success">Saved successfully! Configuration reloaded.</div>
-
-            <!-- Location Section -->
-            <div class="form-group">
-                <label>City / Location Name</label>
-                <div style="display:flex; gap:0.5rem;">
-                    <input type="text" id="locName" placeholder="e.g. London, UK">
-                    <button class="btn btn-secondary" onclick="geocodeAddress()" style="white-space:nowrap;">Geocode</button>
+            <div class="nav-footer">
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span>DISPLAY ONLINE</span>
                 </div>
             </div>
-            <div class="row">
-                <div class="form-group">
-                    <label>Latitude</label>
-                    <input type="number" step="any" id="locLat">
+        </aside>
+
+        <!-- Main Area -->
+        <main>
+            <header>
+                <div class="header-title">
+                    <h1 id="panelTitle">Dashboard Overview</h1>
+                    <p id="panelSubtitle">General state and display preview mockup</p>
                 </div>
-                <div class="form-group">
-                    <label>Longitude</label>
-                    <input type="number" step="any" id="locLon">
+                <div class="save-btn-wrapper" id="headerSaveBtn">
+                    <button class="btn btn-cyan" onclick="saveConfig()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        Save Settings
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Tab -->
+            <div id="tab-dashboard" class="tab-panel active">
+                <div class="grid-4" id="statsGrid">
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        </div>
+                        <div class="stats-info">
+                            <h3>Location</h3>
+                            <p id="statsLocation">N/A</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                        </div>
+                        <div class="stats-info">
+                            <h3>Video Regions</h3>
+                            <p id="statsVideos">0 Active</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                        </div>
+                        <div class="stats-info">
+                            <h3>Cameras</h3>
+                            <p id="statsCameras">0 Connected</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                        </div>
+                        <div class="stats-info">
+                            <h3>Stocks</h3>
+                            <p id="statsStocks">0 Tracked</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mockup-container">
+                    <label style="color:var(--text-primary); font-size:1.05rem; font-weight:600; margin-bottom:0.25rem;">NUC Screen Layout Preview</label>
+                    <span style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:1rem;">Interactive simulation showing screen zones in priority z-order</span>
+                    
+                    <div class="mockup-screen">
+                        <div class="mockup-grid"></div>
+                        <div id="mockupLayersContainer"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Power Save Section -->
-            <div class="toggle-container">
-                <label style="color:var(--text-primary); font-weight:600;">Power Save Mode</label>
-                <label class="switch">
-                    <input type="checkbox" id="psEnabled" onchange="togglePowerSaveFields()">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <div class="row" id="psTimes">
-                <div class="form-group">
-                    <label>Start Time (HH:MM)</label>
-                    <input type="text" id="psStart" placeholder="23:00">
+            <!-- Location Tab -->
+            <div id="tab-location" class="tab-panel">
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Geographic Settings
+                    </h2>
+                    <div class="form-group">
+                        <label for="locName">City / Target Location Name</label>
+                        <div style="display:flex; gap:0.75rem;">
+                            <input type="text" id="locName" placeholder="e.g. Nürnberg, DE">
+                            <button class="btn btn-secondary" onclick="geocodeAddress()" style="white-space:nowrap;">
+                                Geocode Query
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="locLat">Latitude (Decimal Degrees)</label>
+                            <input type="number" step="any" id="locLat">
+                        </div>
+                        <div class="form-group">
+                            <label for="locLon">Longitude (Decimal Degrees)</label>
+                            <input type="number" step="any" id="locLon">
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>End Time (HH:MM)</label>
-                    <input type="text" id="psEnd" placeholder="07:00">
+
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        Power Save (Schedule)
+                    </h2>
+                    <div class="toggle-container">
+                        <label for="psEnabled" style="font-weight:600;">Enable Power Save Schedule</label>
+                        <label class="switch">
+                            <input type="checkbox" id="psEnabled" onchange="togglePowerSaveFields()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="form-row" id="psTimes">
+                        <div class="form-group">
+                            <label for="psStart">Start Time (HH:MM)</label>
+                            <input type="text" id="psStart" placeholder="23:00">
+                        </div>
+                        <div class="form-group">
+                            <label for="psEnd">End Time (HH:MM)</label>
+                            <input type="text" id="psEnd" placeholder="07:00">
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Stocks Section -->
-            <div class="form-group">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label>Stock Symbols</label>
-                    <button class="btn btn-secondary" onclick="addStockItem()" style="padding:0.25rem 0.5rem; font-size:0.8rem;">+ Add</button>
+            <!-- Video Regions Tab -->
+            <div id="tab-videos" class="tab-panel">
+                <div class="glass-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                        <h2>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                            Video Region Decoders
+                        </h2>
+                        <button class="btn btn-secondary btn-small" onclick="addVideoDecoder()">+ Add Video Decoder</button>
+                    </div>
+                    
+                    <div id="videoAccordionContainer"></div>
                 </div>
-                <div id="stocksList" class="list-items"></div>
             </div>
 
-            <!-- Playlists Section -->
-            <div class="form-group">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label>Video Playlists (Region 0)</label>
-                    <button class="btn btn-secondary" onclick="addPlaylistItem()" style="padding:0.25rem 0.5rem; font-size:0.8rem;">+ Add Video</button>
+            <!-- Camera Inputs Tab -->
+            <div id="tab-cameras" class="tab-panel">
+                <div class="glass-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                        <h2>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                            Hardware Video Capture (V4L2 Cameras)
+                        </h2>
+                        <button class="btn btn-secondary btn-small" onclick="addCameraInput()">+ Add Camera Device</button>
+                    </div>
+
+                    <div id="camerasListContainer"></div>
                 </div>
-                <div id="playlistList" class="list-items"></div>
             </div>
 
-            <button class="btn btn-cyan" onclick="saveConfig()">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                </svg>
-                Save Settings
-            </button>
-        </div>
+            <!-- Stocks & News Tab -->
+            <div id="tab-stocks" class="tab-panel">
+                <div class="glass-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                        <h2>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                            Stock Exchange Symbols
+                        </h2>
+                        <button class="btn btn-secondary btn-small" onclick="addStockItem()">+ Add Stock Symbol</button>
+                    </div>
+                    <div id="stocksList" class="list-items"></div>
+                </div>
 
-        <!-- Remote Control Panel -->
-        <div class="panel">
-            <h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                    <circle cx="12" cy="18" r="2"></circle>
-                    <line x1="12" y1="6" x2="12" y2="10"></line>
-                </svg>
-                VIRTUAL REMOTE
-            </h2>
+                <div class="glass-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                        <h2>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+                            RSS News Feeds
+                        </h2>
+                        <button class="btn btn-secondary btn-small" onclick="addNewsFeedItem()">+ Add Feed URL</button>
+                    </div>
+                    
+                    <div class="toggle-container">
+                        <label for="newsEnabled" style="font-weight:600;">Enable Headlines Module</label>
+                        <label class="switch">
+                            <input type="checkbox" id="newsEnabled">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
 
-            <div class="remote-grid">
-                <div class="remote-header">Stock Dashboard</div>
-                <button class="remote-btn" onclick="sendControl('comma')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="19 20 9 12 19 4 19 20"></polygon>
-                        <line x1="5" y1="19" x2="5" y2="5"></line>
-                    </svg>
-                    Prev Stock
-                </button>
-                <button class="remote-btn" onclick="sendControl('dot')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="5 4 15 12 5 20 5 4"></polygon>
-                        <line x1="19" y1="5" x2="19" y2="19"></line>
-                    </svg>
-                    Next Stock
-                </button>
-                <button class="remote-btn" style="opacity:0.3; cursor:default;" disabled></button>
-
-                <button class="remote-btn" onclick="sendControl('minus')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Prev Chart
-                </button>
-                <button class="remote-btn" onclick="sendControl('equal')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Next Chart
-                </button>
-                <button class="remote-btn" style="opacity:0.3; cursor:default;" disabled></button>
-
-                <div class="remote-header">Video Playback</div>
-                <button class="remote-btn" onclick="sendControl('left')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="11 19 2 12 11 5 11 19"></polygon>
-                        <polygon points="22 19 13 12 22 5 22 19"></polygon>
-                    </svg>
-                    Prev Video
-                </button>
-                <button class="remote-btn" onclick="sendControl('right')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="13 19 22 12 13 5 13 19"></polygon>
-                        <polygon points="2 19 11 12 2 5 2 19"></polygon>
-                    </svg>
-                    Next Video
-                </button>
-                <button class="remote-btn" onclick="sendControl('p')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                    Toggle Video
-                </button>
-
-                <button class="remote-btn" onclick="sendControl('down')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 19 5 12 19 12 12 19"></polygon>
-                    </svg>
-                    Skip Backward
-                </button>
-                <button class="remote-btn" onclick="sendControl('up')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 5 19 12 5 12 12 5"></polygon>
-                    </svg>
-                    Skip Forward
-                </button>
-                <button class="remote-btn" onclick="sendControl('v')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                    Hide/Show All
-                </button>
+                    <div id="newsList" class="list-items"></div>
+                </div>
             </div>
-        </div>
+
+            <!-- Layout & Keys Tab -->
+            <div id="tab-layout" class="tab-panel">
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                        Display Layers Draw Priority
+                    </h2>
+                    <span style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:1.25rem;">
+                        Layers are drawn from top to bottom (items lower in list draw on top of items higher in list).
+                    </span>
+                    <div id="layoutLayersContainer"></div>
+                </div>
+
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="20" x2="18" y2="20"></line></svg>
+                        Global & Stock Key Bindings
+                    </h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="keyHideVideos">Hide/Show All Videos</label>
+                            <select id="keyHideVideos" class="key-selector"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="keyNextStock">Next Stock Symbol</label>
+                            <select id="keyNextStock" class="key-selector"></select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="keyPrevStock">Previous Stock Symbol</label>
+                            <select id="keyPrevStock" class="key-selector"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="keyNextChart">Next Financial Chart</label>
+                            <select id="keyNextChart" class="key-selector"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="keyPrevChart">Previous Financial Chart</label>
+                            <select id="keyPrevChart" class="key-selector"></select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Virtual Remote Tab -->
+            <div id="tab-remote" class="tab-panel">
+                <div class="glass-panel">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><circle cx="12" cy="18" r="2"></circle><line x1="12" y1="6" x2="12" y2="10"></line></svg>
+                        Tactile Remote Terminal
+                    </h2>
+                    
+                    <div class="remote-phone">
+                        <div class="remote-screen-title">NUC Core remote</div>
+                        
+                        <div class="remote-dpad">
+                            <button class="dpad-btn dpad-up" onclick="sendControl('up')" title="Skip Video Forward">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            </button>
+                            <button class="dpad-btn dpad-down" onclick="sendControl('down')" title="Skip Video Backward">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <button class="dpad-btn dpad-left" onclick="sendControl('left')" title="Previous Video">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                            </button>
+                            <button class="dpad-btn dpad-right" onclick="sendControl('right')" title="Next Video">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </button>
+                            <button class="dpad-btn dpad-center" onclick="sendControl('p')" title="Play/Pause Video">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            </button>
+                        </div>
+                        
+                        <div class="remote-row">
+                            <div class="remote-title-divider">Stock Navigation</div>
+                            <button class="remote-btn" onclick="sendControl('comma')">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+                                <span>Prev stock</span>
+                            </button>
+                            <button class="remote-btn" onclick="sendControl('dot')">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+                                <span>Next stock</span>
+                            </button>
+                            <button class="remote-btn" onclick="sendControl('v')">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                <span>Hide layer</span>
+                            </button>
+                        </div>
+                        
+                        <div class="remote-row">
+                            <div class="remote-title-divider">Chart Intervals</div>
+                            <button class="remote-btn" onclick="sendControl('minus')">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <span>Prev chart</span>
+                            </button>
+                            <button class="remote-btn" onclick="sendControl('equal')">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <span>Next chart</span>
+                            </button>
+                            <div class="remote-btn" style="opacity: 0.15; cursor: default;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
     <script>
         let fullConfig = null;
 
-        // Fetch current config
-        async function fetchConfig() {
-            try {
-                const res = await fetch('/api/config');
-                fullConfig = await res.json();
-                
-                // Populate location
-                document.getElementById('locName').value = fullConfig.location.name || '';
-                document.getElementById('locLat').value = fullConfig.location.lat || 0;
-                document.getElementById('locLon').value = fullConfig.location.lon || 0;
+        // Key Name List mapped dynamically
+        const VALID_KEYS = [
+            "", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            "up", "down", "left", "right", "space", "enter", "tab", "esc", "backspace", "home", "end", "pageup", "pagedown",
+            "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+            "minus", "equal", "comma", "dot", "slash"
+        ];
 
-                // Populate Power Save
-                document.getElementById('psEnabled').checked = fullConfig.power_save.enabled || false;
-                document.getElementById('psStart').value = fullConfig.power_save.start_time || '23:00';
-                document.getElementById('psEnd').value = fullConfig.power_save.end_time || '07:00';
-                togglePowerSaveFields();
+        // Global key dropdown population helper
+        function populateKeySelectors() {
+            const selectors = document.querySelectorAll('.key-selector');
+            selectors.forEach(sel => {
+                sel.innerHTML = '';
+                VALID_KEYS.forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.textContent = key === "" ? "None (Auto)" : key.toUpperCase();
+                    sel.appendChild(opt);
+                });
+            });
+        }
 
-                // Populate Stocks
-                const stocksList = document.getElementById('stocksList');
-                stocksList.innerHTML = '';
-                if (fullConfig.stocks) {
-                    fullConfig.stocks.forEach(stock => {
-                        createStockItemDOM(stock.symbol, stock.name, stock.currency_symbol);
-                    });
-                }
+        // Switch panel tabs
+        function switchTab(tabId) {
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
 
-                // Populate Playlist (Video 0)
-                const playlistList = document.getElementById('playlistList');
-                playlistList.innerHTML = '';
-                if (fullConfig.videos && fullConfig.videos.length > 0 && fullConfig.videos[0].playlists) {
-                    fullConfig.videos[0].playlists.forEach(path => {
-                        createPlaylistItemDOM(path);
-                    });
-                }
-            } catch (err) {
-                showError('Failed to load configuration from display engine.');
+            const activeNav = Array.from(document.querySelectorAll('.nav-item')).find(item => item.getAttribute('onclick').includes(tabId));
+            if (activeNav) activeNav.classList.add('active');
+
+            const targetPanel = document.getElementById(tabId);
+            if (targetPanel) targetPanel.classList.add('active');
+
+            // Header titles update
+            const titles = {
+                'tab-dashboard': ['Dashboard Overview', 'General state and display preview mockup'],
+                'tab-location': ['Location & Scheduling', 'Setup city coordinates and power save intervals'],
+                'tab-videos': ['Video Region Decoders', 'Assign video sources, coordinates, and triggers for each viewport'],
+                'tab-cameras': ['V4L2 Cameras', 'Configure camera hardware devices and layout grids'],
+                'tab-stocks': ['Financials & News RSS', 'Add stocks tickers and headlines feed targets'],
+                'tab-layout': ['Layout stack & Key Bindings', 'Set key mapping actions and layers render ordering'],
+                'tab-remote': ['Tactile Remote Terminal', 'Send virtual hardware keystrokes directly to the screen']
+            };
+
+            const headerInfo = titles[tabId];
+            document.getElementById('panelTitle').textContent = headerInfo[0];
+            document.getElementById('panelSubtitle').textContent = headerInfo[1];
+            
+            // Layout Preview redraw when switching back to dashboard
+            if (tabId === 'tab-dashboard') {
+                updateLayoutPreview();
             }
         }
 
+        // Accordion functionality
+        function toggleAccordion(element) {
+            const item = element.parentElement;
+            item.classList.toggle('open');
+        }
+
+        // Toast trigger
+        function showToast(title, msg, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            toast.innerHTML = `
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-msg">${msg}</div>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // Fetch current config
+        async function fetchConfig() {
+            try {
+                populateKeySelectors();
+                const res = await fetch('/api/config');
+                fullConfig = await res.json();
+                
+                populateFormFields();
+                updateLayoutPreview();
+            } catch (err) {
+                showToast('Failed Connection', 'Could not read settings from NUC display engine.', 'error');
+            }
+        }
+
+        // Populate fields
+        function populateFormFields() {
+            if (!fullConfig) return;
+
+            // Stats
+            document.getElementById('statsLocation').textContent = fullConfig.location.name || 'N/A';
+            document.getElementById('statsVideos').textContent = `${(fullConfig.videos || []).filter(v => v.enabled).length} Enabled`;
+            document.getElementById('statsCameras').textContent = `${(fullConfig.cameras || []).filter(c => c.enabled).length} Connected`;
+            document.getElementById('statsStocks').textContent = `${(fullConfig.stocks || []).length} Tracked`;
+
+            // Location
+            document.getElementById('locName').value = fullConfig.location.name || '';
+            document.getElementById('locLat').value = fullConfig.location.lat || 0;
+            document.getElementById('locLon').value = fullConfig.location.lon || 0;
+
+            // Power save
+            document.getElementById('psEnabled').checked = fullConfig.power_save.enabled || false;
+            document.getElementById('psStart').value = fullConfig.power_save.start_time || '23:00';
+            document.getElementById('psEnd').value = fullConfig.power_save.end_time || '07:00';
+            togglePowerSaveFields();
+
+            // News enabled
+            document.getElementById('newsEnabled').checked = (fullConfig.news && fullConfig.news.enabled !== undefined) ? fullConfig.news.enabled : true;
+
+            // Populate list sections
+            renderStocksList();
+            renderNewsList();
+            renderVideosAccordion();
+            renderCamerasList();
+            renderLayoutLayersList();
+
+            // Populate Key selectors
+            document.getElementById('keyHideVideos').value = fullConfig.global_keys.hide_videos || '';
+            document.getElementById('keyNextStock').value = (fullConfig.stock_keys && fullConfig.stock_keys.next_stock) || '';
+            document.getElementById('keyPrevStock').value = (fullConfig.stock_keys && fullConfig.stock_keys.prev_stock) || '';
+            document.getElementById('keyNextChart').value = (fullConfig.stock_keys && fullConfig.stock_keys.next_chart) || '';
+            document.getElementById('keyPrevChart').value = (fullConfig.stock_keys && fullConfig.stock_keys.prev_chart) || '';
+        }
+
+        // Toggle Power save input fields opacity
         function togglePowerSaveFields() {
             const enabled = document.getElementById('psEnabled').checked;
-            document.getElementById('psTimes').style.opacity = enabled ? '1' : '0.4';
-            document.getElementById('psTimes').querySelectorAll('input').forEach(i => i.disabled = !enabled);
+            const psTimes = document.getElementById('psTimes');
+            psTimes.style.opacity = enabled ? '1' : '0.35';
+            psTimes.querySelectorAll('input').forEach(i => i.disabled = !enabled);
         }
 
-        function createStockItemDOM(symbol = '', name = '', currency = '$') {
-            const div = document.createElement('div');
-            div.className = 'list-item';
-            div.innerHTML = `
-                <input type="text" placeholder="Sym" class="stock-sym" value="${symbol}" style="flex:1;">
-                <input type="text" placeholder="Name" class="stock-name" value="${name}" style="flex:2;">
-                <select class="stock-curr" style="flex:1;">
-                    <option value="$" ${currency==='$'?'selected':''}>$</option>
-                    <option value="€" ${currency==='€'?'selected':''}>€</option>
-                    <option value="£" ${currency==='£'?'selected':''}>£</option>
-                    <option value="₹" ${currency==='₹'?'selected':''}>₹</option>
-                    <option value="¥" ${currency==='¥'?'selected':''}>¥</option>
-                </select>
-                <button class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.4rem 0.6rem; border-radius:6px; font-size:0.8rem;">×</button>
-            `;
-            document.getElementById('stocksList').appendChild(div);
+        // --- STOCKS LIST COMPONENT ---
+        function renderStocksList() {
+            const container = document.getElementById('stocksList');
+            container.innerHTML = '';
+            if (fullConfig.stocks) {
+                fullConfig.stocks.forEach((stock, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'list-item';
+                    row.innerHTML = `
+                        <input type="text" placeholder="Symbol" value="${stock.symbol}" oninput="updateStock(${index}, 'symbol', this.value)" style="flex: 1.5; font-weight:600;">
+                        <input type="text" placeholder="Name" value="${stock.name}" oninput="updateStock(${index}, 'name', this.value)" style="flex: 2;">
+                        <select onchange="updateStock(${index}, 'currency_symbol', this.value)" style="flex: 1;">
+                            <option value="$" ${stock.currency_symbol==='$'?'selected':''}>$ (USD)</option>
+                            <option value="€" ${stock.currency_symbol==='€'?'selected':''}>€ (EUR)</option>
+                            <option value="£" ${stock.currency_symbol==='£'?'selected':''}>£ (GBP)</option>
+                            <option value="₹" ${stock.currency_symbol==='₹'?'selected':''}>₹ (INR)</option>
+                            <option value="¥" ${stock.currency_symbol==='¥'?'selected':''}>¥ (JPY/CNY)</option>
+                            <option value="₩" ${stock.currency_symbol==='₩'?'selected':''}>₩ (KRW)</option>
+                        </select>
+                        <button class="btn btn-danger btn-small" onclick="deleteStock(${index})" style="padding: 0.6rem 0.8rem;">Remove</button>
+                    `;
+                    container.appendChild(row);
+                });
+            }
         }
 
-        function createPlaylistItemDOM(path = '') {
-            const div = document.createElement('div');
-            div.className = 'list-item';
-            div.innerHTML = `
-                <input type="text" class="video-path" placeholder="e.g. tests/sample.mp4" value="${path}" style="flex:1;">
-                <button class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.4rem 0.6rem; border-radius:6px; font-size:0.8rem;">×</button>
-            `;
-            document.getElementById('playlistList').appendChild(div);
+        function updateStock(idx, field, val) {
+            fullConfig.stocks[idx][field] = val;
         }
 
-        function addStockItem() { createStockItemDOM(); }
-        function addPlaylistItem() { createPlaylistItemDOM(); }
+        function addStockItem() {
+            if (!fullConfig.stocks) fullConfig.stocks = [];
+            fullConfig.stocks.push({ symbol: '', name: '', currency_symbol: '$' });
+            renderStocksList();
+        }
+
+        function deleteStock(idx) {
+            fullConfig.stocks.splice(idx, 1);
+            renderStocksList();
+        }
+
+        // --- RSS NEWS SOURCES ---
+        function renderNewsList() {
+            const container = document.getElementById('newsList');
+            container.innerHTML = '';
+            if (fullConfig.news && fullConfig.news.sources) {
+                fullConfig.news.sources.forEach((source, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'list-item';
+                    row.innerHTML = `
+                        <input type="text" placeholder="RSS Feed XML URL" value="${source}" oninput="updateNewsSource(${index}, this.value)" style="flex: 1;">
+                        <button class="btn btn-danger btn-small" onclick="deleteNewsSource(${index})" style="padding: 0.6rem 0.8rem;">Remove</button>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+        }
+
+        function updateNewsSource(idx, val) {
+            fullConfig.news.sources[idx] = val;
+        }
+
+        function addNewsFeedItem() {
+            if (!fullConfig.news) fullConfig.news = { enabled: true, sources: [] };
+            if (!fullConfig.news.sources) fullConfig.news.sources = [];
+            fullConfig.news.sources.push('');
+            renderNewsList();
+        }
+
+        function deleteNewsSource(idx) {
+            fullConfig.news.sources.splice(idx, 1);
+            renderNewsList();
+        }
+
+        // --- VIDEOS DECODERS ---
+        function renderVideosAccordion() {
+            const container = document.getElementById('videoAccordionContainer');
+            container.innerHTML = '';
+            if (fullConfig.videos) {
+                fullConfig.videos.forEach((v, index) => {
+                    const el = document.createElement('div');
+                    el.className = 'accordion-item';
+                    el.id = `video-accordion-${index}`;
+                    
+                    const pathsListHTML = (v.playlists || []).map((path, pIdx) => `
+                        <div class="list-item" style="margin-bottom:0.4rem;">
+                            <input type="text" placeholder="e.g. tests/sample.mp4" value="${path}" oninput="updateVideoPlaylistPath(${index}, ${pIdx}, this.value)" style="flex:1;">
+                            <button class="btn btn-danger btn-small" onclick="deleteVideoPlaylistPath(${index}, ${pIdx})">&times;</button>
+                        </div>
+                    `).join('');
+
+                    // Build dropdown selections for video keys
+                    const keysSelectsHTML = ['next', 'prev', 'skip_forward', 'skip_backward'].map(k => {
+                        const boundKey = (v.keys && v.keys[k]) || '';
+                        let opts = VALID_KEYS.map(key => `
+                            <option value="${key}" ${boundKey===key?'selected':''}>${key===''?'None (Auto)':key.toUpperCase()}</option>
+                        `).join('');
+                        return `
+                            <div class="form-group">
+                                <label style="text-transform: capitalize;">${k.replace('_', ' ')} Key</label>
+                                <select onchange="updateVideoKey(${index}, '${k}', this.value)">${opts}</select>
+                            </div>
+                        `;
+                    }).join('');
+
+                    // Trigger trigger select
+                    let triggerOpts = VALID_KEYS.map(key => `
+                        <option value="${key===''?'auto':key}" ${(v.start_trigger === key || (key==='' && v.start_trigger==='auto'))?'selected':''}>${key===''?'Auto Play':key.toUpperCase()}</option>
+                    `).join('');
+
+                    el.innerHTML = `
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <div class="accordion-title-block">
+                                <span class="badge ${v.enabled?'badge-active':'badge-inactive'}">${v.enabled?'ENABLED':'DISABLED'}</span>
+                                <h3>Video Player Slot #${index}</h3>
+                            </div>
+                            <svg class="accordion-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        <div class="accordion-content">
+                            <div class="toggle-container" style="background:rgba(255,255,255,0.015); margin-bottom:1.5rem;">
+                                <label for="vEnabled-${index}" style="font-weight:600;">Enable Video Player Region</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="vEnabled-${index}" ${v.enabled?'checked':''} onchange="updateVideoBool(${index}, 'enabled', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="grid-2">
+                                <div>
+                                    <div class="toggle-container" style="background:rgba(255,255,255,0.015);">
+                                        <label for="vAudio-${index}">Enable Audio Output</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="vAudio-${index}" ${v.audio_enabled?'checked':''} onchange="updateVideoBool(${index}, 'audio_enabled', this.checked)">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>Audio Hardware Device Name</label>
+                                        <input type="text" value="${v.audio_device || 'default'}" oninput="updateVideoString(${index}, 'audio_device', this.value)">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Playlist Load/Start Trigger</label>
+                                        <select onchange="updateVideoString(${index}, 'start_trigger', this.value)">${triggerOpts}</select>
+                                    </div>
+
+                                    <div class="form-group" style="margin-top:1.5rem;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                                            <label>Playlist Media Paths</label>
+                                            <button class="btn btn-secondary btn-small" onclick="addVideoPlaylistPath(${index})">+ Add Path</button>
+                                        </div>
+                                        <div id="videoPathsList-${index}">${pathsListHTML}</div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:1rem;">Target Layout Rect Coordinates</h4>
+                                    
+                                    ${renderCoordSliders(index, 'videos', v)}
+                                    
+                                    <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin: 1.5rem 0 1rem 0;">Source Media Crop Region</h4>
+                                    
+                                    ${renderCropCoordSliders(index, 'videos', v)}
+                                </div>
+                            </div>
+
+                            <div style="margin-top:1.5rem; border-top: 1px solid var(--border-color); padding-top:1.5rem;">
+                                <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:1rem;">Keyboard Control Overrides</h4>
+                                <div class="grid-4">${keysSelectsHTML}</div>
+                            </div>
+
+                            <div style="margin-top:2rem; display:flex; justify-content:flex-end;">
+                                <button class="btn btn-danger btn-small" onclick="deleteVideoDecoder(${index})">Delete Video Decoder</button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+            }
+        }
+
+        function renderCoordSliders(idx, type, obj) {
+            return ['x', 'y', 'w', 'h'].map(c => `
+                <div class="slider-control-group">
+                    <div class="slider-header">
+                        <span style="text-transform:uppercase; font-weight:700;">${c} Coordinate</span>
+                        <span>Range: 0.0 - 1.0</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" min="0" max="1" step="0.01" value="${obj[c] || 0}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
+                        <span id="${type}-${idx}-val-${c}">${(obj[c] || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderCropCoordSliders(idx, type, obj) {
+            return ['src_x', 'src_y', 'src_w', 'src_h'].map(c => `
+                <div class="slider-control-group">
+                    <div class="slider-header">
+                        <span style="text-transform:uppercase; font-weight:700;">Crop ${c.replace('src_', '')}</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" min="0" max="1" step="0.01" value="${obj[c] !== undefined ? obj[c] : 1}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
+                        <span id="${type}-${idx}-val-${c}">${(obj[c] !== undefined ? obj[c] : 1).toFixed(2)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateVideoBool(idx, field, checked) {
+            fullConfig.videos[idx][field] = checked;
+            // Update accordion status indicator immediately
+            const accordion = document.getElementById(`video-accordion-${idx}`);
+            if (accordion) {
+                const badge = accordion.querySelector('.accordion-header .badge');
+                if (field === 'enabled') {
+                    if (checked) {
+                        badge.className = 'badge badge-active';
+                        badge.textContent = 'ENABLED';
+                    } else {
+                        badge.className = 'badge badge-inactive';
+                        badge.textContent = 'DISABLED';
+                    }
+                }
+            }
+            updateLayoutPreview();
+        }
+
+        function updateVideoString(idx, field, val) {
+            fullConfig.videos[idx][field] = val;
+        }
+
+        function updateVideoKey(idx, keyType, val) {
+            if (!fullConfig.videos[idx].keys) fullConfig.videos[idx].keys = {};
+            if (val === '') {
+                delete fullConfig.videos[idx].keys[keyType];
+            } else {
+                fullConfig.videos[idx].keys[keyType] = val;
+            }
+        }
+
+        function updateCoordSlider(type, idx, coord, val) {
+            fullConfig[type][idx][coord] = val;
+            document.getElementById(`${type}-${idx}-val-${coord}`).textContent = val.toFixed(2);
+            updateLayoutPreview();
+        }
+
+        function updateVideoPlaylistPath(vIdx, pIdx, val) {
+            fullConfig.videos[vIdx].playlists[pIdx] = val;
+        }
+
+        function addVideoPlaylistPath(vIdx) {
+            if (!fullConfig.videos[vIdx].playlists) fullConfig.videos[vIdx].playlists = [];
+            fullConfig.videos[vIdx].playlists.push('');
+            renderVideosAccordion();
+            // keep the accordion open
+            document.getElementById(`video-accordion-${vIdx}`).classList.add('open');
+        }
+
+        function deleteVideoPlaylistPath(vIdx, pIdx) {
+            fullConfig.videos[vIdx].playlists.splice(pIdx, 1);
+            renderVideosAccordion();
+            document.getElementById(`video-accordion-${vIdx}`).classList.add('open');
+        }
+
+        function addVideoDecoder() {
+            if (!fullConfig.videos) fullConfig.videos = [];
+            fullConfig.videos.push({
+                enabled: true,
+                audio_enabled: false,
+                audio_device: 'default',
+                playlists: [],
+                x: 0.0, y: 0.0, w: 0.5, h: 0.5,
+                src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
+                start_trigger: 'auto',
+                keys: {}
+            });
+            // Auto add to layout list
+            const newIdx = fullConfig.videos.length - 1;
+            fullConfig.layout.push({ type: 'video', video_index: newIdx });
+
+            renderVideosAccordion();
+            renderLayoutLayersList();
+            updateLayoutPreview();
+            
+            // Open the newly added decoder panel
+            const accordionItems = document.querySelectorAll('#videoAccordionContainer .accordion-item');
+            if (accordionItems.length > 0) {
+                accordionItems[accordionItems.length - 1].classList.add('open');
+            }
+        }
+
+        function deleteVideoDecoder(idx) {
+            fullConfig.videos.splice(idx, 1);
+            // Remove matching layout layer and update indices
+            fullConfig.layout = fullConfig.layout.filter(layer => {
+                if (layer.type === 'video') {
+                    if (layer.video_index === idx) return false; // Delete layout entry
+                    if (layer.video_index > idx) layer.video_index--; // Adjust index down
+                }
+                return true;
+            });
+            renderVideosAccordion();
+            renderLayoutLayersList();
+            updateLayoutPreview();
+        }
+
+        // --- CAMERA CAPTURES ---
+        function renderCamerasList() {
+            const container = document.getElementById('camerasListContainer');
+            container.innerHTML = '';
+            if (fullConfig.cameras) {
+                fullConfig.cameras.forEach((cam, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'glass-panel';
+                    row.style.background = 'rgba(255,255,255,0.01)';
+                    row.style.marginBottom = '1.5rem';
+                    
+                    row.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.25rem;">
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <span class="badge ${cam.enabled?'badge-active':'badge-inactive'}">${cam.enabled?'ACTIVE':'INACTIVE'}</span>
+                                <h3 style="font-size:0.95rem; font-weight:600;">Camera Stream Slot #${index}</h3>
+                            </div>
+                            <button class="btn btn-danger btn-small" onclick="deleteCameraInput(${index})">Remove Camera</button>
+                        </div>
+
+                        <div class="toggle-container" style="background:rgba(255,255,255,0.015);">
+                            <label for="cEnabled-${index}" style="font-weight:600;">Enable Camera Streaming</label>
+                            <label class="switch">
+                                <input type="checkbox" id="cEnabled-${index}" ${cam.enabled?'checked':''} onchange="updateCameraBool(${index}, 'enabled', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="grid-2">
+                            <div>
+                                <div class="form-group">
+                                    <label>Linux V4L2 Device Path</label>
+                                    <input type="text" placeholder="e.g. /dev/video0" value="${cam.device || ''}" oninput="updateCameraString(${index}, 'device', this.value)">
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Capture Width</label>
+                                        <input type="number" value="${cam.width || 640}" oninput="updateCameraInt(${index}, 'width', this.value)">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Capture Height</label>
+                                        <input type="number" value="${cam.height || 480}" oninput="updateCameraInt(${index}, 'height', this.value)">
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Frame rate (FPS)</label>
+                                        <input type="number" value="${cam.fps || 30}" oninput="updateCameraInt(${index}, 'fps', this.value)">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Pixel Stream Format</label>
+                                        <select onchange="updateCameraString(${index}, 'pixel_format', this.value)">
+                                            <option value="MJPG" ${cam.pixel_format==='MJPG'?'selected':''}>MJPEG Compressed (MJPG)</option>
+                                            <option value="YUYV" ${cam.pixel_format==='YUYV'?'selected':''}>YUYV 4:2:2 Raw (YUYV)</option>
+                                            <option value="NV12" ${cam.pixel_format==='NV12'?'selected':''}>NV12 Planar YUV (NV12)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:1rem;">Screen Destination Coordinates</h4>
+                                ${renderCoordSliders(index, 'cameras', cam)}
+                                
+                                <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin:1.5rem 0 1rem 0;">Source Sensor Crop Rect</h4>
+                                ${renderCropCoordSliders(index, 'cameras', cam)}
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+        }
+
+        function updateCameraBool(idx, field, checked) {
+            fullConfig.cameras[idx][field] = checked;
+            renderCamerasList();
+            updateLayoutPreview();
+        }
+
+        function updateCameraString(idx, field, val) {
+            fullConfig.cameras[idx][field] = val;
+        }
+
+        function updateCameraInt(idx, field, val) {
+            fullConfig.cameras[idx][field] = parseInt(val) || 0;
+        }
+
+        function addCameraInput() {
+            if (!fullConfig.cameras) fullConfig.cameras = [];
+            fullConfig.cameras.push({
+                enabled: true,
+                device: '/dev/video0',
+                width: 640, height: 480, fps: 30,
+                pixel_format: 'MJPG',
+                x: 0.1, y: 0.1, w: 0.4, h: 0.4,
+                src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0
+            });
+            // Auto add to layout list
+            const newIdx = fullConfig.cameras.length - 1;
+            fullConfig.layout.push({ type: 'camera', camera_index: newIdx });
+
+            renderCamerasList();
+            renderLayoutLayersList();
+            updateLayoutPreview();
+        }
+
+        function deleteCameraInput(idx) {
+            fullConfig.cameras.splice(idx, 1);
+            // Remove matching layout layer and update indices
+            fullConfig.layout = fullConfig.layout.filter(layer => {
+                if (layer.type === 'camera') {
+                    if (layer.camera_index === idx) return false;
+                    if (layer.camera_index > idx) layer.camera_index--;
+                }
+                return true;
+            });
+            renderCamerasList();
+            renderLayoutLayersList();
+            updateLayoutPreview();
+        }
+
+        // --- LAYOUT LAYERS LIST REORDER ---
+        function renderLayoutLayersList() {
+            const container = document.getElementById('layoutLayersContainer');
+            container.innerHTML = '';
+            if (fullConfig.layout) {
+                fullConfig.layout.forEach((layer, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'layout-list-item';
+                    
+                    let label = '';
+                    let badgeClass = '';
+                    if (layer.type === 'weather') {
+                        label = 'Weather Conditions Block';
+                        badgeClass = 'badge-weather';
+                    } else if (layer.type === 'stocks') {
+                        label = 'Financial Stocks Tickers Grid';
+                        badgeClass = 'badge-stocks';
+                    } else if (layer.type === 'news') {
+                        label = 'Scrolling Headlines Banner';
+                        badgeClass = 'badge-news';
+                    } else if (layer.type === 'video') {
+                        label = `Video Player Slot #${layer.video_index}`;
+                        badgeClass = 'badge-video';
+                    } else if (layer.type === 'camera') {
+                        label = `Camera Hardware Input #${layer.camera_index}`;
+                        badgeClass = 'badge-camera';
+                    }
+
+                    row.innerHTML = `
+                        <div class="layout-list-info">
+                            <span class="layout-type-badge ${badgeClass}">${layer.type}</span>
+                            <span style="font-weight:600; font-size:0.9rem;">${label}</span>
+                        </div>
+                        <div class="layout-actions">
+                            <button class="layout-btn" onclick="moveLayer(${index}, -1)" ${index===0?'disabled':''} title="Move Layer Down (Backwards)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            </button>
+                            <button class="layout-btn" onclick="moveLayer(${index}, 1)" ${index===fullConfig.layout.length-1?'disabled':''} title="Move Layer Up (Forwards)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+        }
+
+        function moveLayer(index, dir) {
+            const temp = fullConfig.layout[index];
+            fullConfig.layout[index] = fullConfig.layout[index + dir];
+            fullConfig.layout[index + dir] = temp;
+            renderLayoutLayersList();
+            updateLayoutPreview();
+        }
+
+        // --- DRAW INTERACTIVE DISPLAY PREVIEW ---
+        function updateLayoutPreview() {
+            if (!fullConfig) return;
+            const container = document.getElementById('mockupLayersContainer');
+            container.innerHTML = '';
+
+            // Draw order: first = behind, last = on top.
+            // Absolute positioning DOM order renders later elements on top of earlier ones.
+            // So rendering in order of index matches OpenGL overlays perfectly.
+            fullConfig.layout.forEach((layer) => {
+                let div = document.createElement('div');
+                div.className = 'mockup-layer';
+
+                if (layer.type === 'weather') {
+                    div.classList.add('mockup-layer-weather');
+                    div.style.left = '3%';
+                    div.style.top = '3%';
+                    div.style.width = '37%';
+                    div.style.height = '75%';
+                    div.innerHTML = `<span>Weather</span>`;
+                    container.appendChild(div);
+                } 
+                else if (layer.type === 'news') {
+                    const newsEnabled = document.getElementById('newsEnabled').checked;
+                    if (newsEnabled) {
+                        div.classList.add('mockup-layer-news');
+                        div.style.left = '3%';
+                        div.style.top = '80%';
+                        div.style.width = '37%';
+                        div.style.height = '17%';
+                        div.innerHTML = `<span>News</span>`;
+                        container.appendChild(div);
+                    }
+                } 
+                else if (layer.type === 'stocks') {
+                    div.classList.add('mockup-layer-stocks');
+                    div.style.left = '42%';
+                    div.style.top = '3%';
+                    div.style.width = '55%';
+                    div.style.height = '94%';
+                    div.innerHTML = `<span>Stocks</span>`;
+                    container.appendChild(div);
+                } 
+                else if (layer.type === 'video') {
+                    const v = fullConfig.videos[layer.video_index];
+                    if (v && v.enabled) {
+                        div.classList.add('mockup-layer-video');
+                        div.style.left = `${v.x * 100}%`;
+                        div.style.top = `${v.y * 100}%`;
+                        div.style.width = `${v.w * 100}%`;
+                        div.style.height = `${v.h * 100}%`;
+                        div.innerHTML = `<span>Video ${layer.video_index}</span>`;
+                        div.onclick = () => { switchTab('tab-videos'); document.getElementById(`video-accordion-${layer.video_index}`).classList.add('open'); };
+                        container.appendChild(div);
+                    }
+                } 
+                else if (layer.type === 'camera') {
+                    const c = fullConfig.cameras[layer.camera_index];
+                    if (c && c.enabled) {
+                        div.classList.add('mockup-layer-camera');
+                        div.style.left = `${c.x * 100}%`;
+                        div.style.top = `${c.y * 100}%`;
+                        div.style.width = `${c.w * 100}%`;
+                        div.style.height = `${c.h * 100}%`;
+                        div.innerHTML = `<span>Camera ${layer.camera_index}</span>`;
+                        div.onclick = () => switchTab('tab-cameras');
+                        container.appendChild(div);
+                    }
+                }
+            });
+        }
 
         // Geocoding via Open-Meteo
         async function geocodeAddress() {
             const name = document.getElementById('locName').value;
             if (!name) {
-                showError('Please enter a city name first.');
+                showToast('Validation Error', 'Please enter a target city name first.', 'error');
                 return;
             }
             try {
@@ -687,50 +2169,98 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     const fullName = first.name + (first.admin1 ? `, ${first.admin1}` : '') + (first.country ? `, ${first.country}` : '');
                     document.getElementById('locName').value = fullName;
                     
-                    hideAlerts();
+                    showToast('Location Found', `Updated to coordinates for ${fullName}.`, 'success');
                 } else {
-                    showError('Location not found.');
+                    showToast('Geocoding Failed', 'No matches found for that location query.', 'error');
                 }
             } catch (err) {
-                showError('Geocoding network query failed.');
+                showToast('Geocoding Network Error', 'Failed to communicate with Open-Meteo.', 'error');
             }
         }
 
-        // Save Config
+        // Save Config to Server
         async function saveConfig() {
-            hideAlerts();
             if (!fullConfig) return;
 
-            // Update local object
+            // Gather Location
             fullConfig.location.name = document.getElementById('locName').value;
             fullConfig.location.lat = parseFloat(document.getElementById('locLat').value);
             fullConfig.location.lon = parseFloat(document.getElementById('locLon').value);
 
+            // Gather Power save
             fullConfig.power_save.enabled = document.getElementById('psEnabled').checked;
             fullConfig.power_save.start_time = document.getElementById('psStart').value;
             fullConfig.power_save.end_time = document.getElementById('psEnd').value;
 
-            // Collect Stocks
-            fullConfig.stocks = [];
-            const stockElements = document.querySelectorAll('#stocksList .list-item');
-            stockElements.forEach(el => {
-                const sym = el.querySelector('.stock-sym').value.trim();
-                const name = el.querySelector('.stock-name').value.trim();
-                const curr = el.querySelector('.stock-curr').value;
-                if (sym) {
-                    fullConfig.stocks.push({ symbol: sym, name: name, currency_symbol: curr });
+            // Gather news enabled
+            if (!fullConfig.news) fullConfig.news = { enabled: true, sources: [] };
+            fullConfig.news.enabled = document.getElementById('newsEnabled').checked;
+
+            // Gather Global Keys
+            fullConfig.global_keys.hide_videos = document.getElementById('keyHideVideos').value || null;
+
+            // Gather Stock Keys
+            if (!fullConfig.stock_keys) fullConfig.stock_keys = {};
+            fullConfig.stock_keys.next_stock = document.getElementById('keyNextStock').value || null;
+            fullConfig.stock_keys.prev_stock = document.getElementById('keyPrevStock').value || null;
+            fullConfig.stock_keys.next_chart = document.getElementById('keyNextChart').value || null;
+            fullConfig.stock_keys.prev_chart = document.getElementById('keyPrevChart').value || null;
+
+            // Clean collections to avoid blank items
+            if (fullConfig.stocks) {
+                fullConfig.stocks = fullConfig.stocks.filter(s => s.symbol.trim() !== '');
+            }
+            if (fullConfig.news && fullConfig.news.sources) {
+                fullConfig.news.sources = fullConfig.news.sources.filter(src => src.trim() !== '');
+            }
+            if (fullConfig.videos) {
+                fullConfig.videos.forEach(v => {
+                    if (v.playlists) {
+                        v.playlists = v.playlists.filter(p => p.trim() !== '');
+                    }
+                });
+            }
+
+            // Client-side key binding duplicate validations
+            const keysToValidate = [];
+            if (fullConfig.global_keys.hide_videos) keysToValidate.push({ name: 'Hide/Show Videos', key: fullConfig.global_keys.hide_videos });
+            if (fullConfig.stock_keys.next_stock) keysToValidate.push({ name: 'Next Stock', key: fullConfig.stock_keys.next_stock });
+            if (fullConfig.stock_keys.prev_stock) keysToValidate.push({ name: 'Prev Stock', key: fullConfig.stock_keys.prev_stock });
+            if (fullConfig.stock_keys.next_chart) keysToValidate.push({ name: 'Next Chart', key: fullConfig.stock_keys.next_chart });
+            if (fullConfig.stock_keys.prev_chart) keysToValidate.push({ name: 'Prev Chart', key: fullConfig.stock_keys.prev_chart });
+            
+            if (fullConfig.videos) {
+                fullConfig.videos.forEach((v, index) => {
+                    if (v.enabled) {
+                        if (v.start_trigger && v.start_trigger !== 'auto') keysToValidate.push({ name: `Video ${index} Trigger`, key: v.start_trigger });
+                        if (v.keys) {
+                            if (v.keys.next) keysToValidate.push({ name: `Video ${index} Next`, key: v.keys.next });
+                            if (v.keys.prev) keysToValidate.push({ name: `Video ${index} Prev`, key: v.keys.prev });
+                            if (v.keys.skip_forward) keysToValidate.push({ name: `Video ${index} Skip Fwd`, key: v.keys.skip_forward });
+                            if (v.keys.skip_backward) keysToValidate.push({ name: `Video ${index} Skip Bwd`, key: v.keys.skip_backward });
+                        }
+                    }
+                });
+            }
+
+            const duplicates = {};
+            keysToValidate.forEach(item => {
+                if (item.key) {
+                    if (!duplicates[item.key]) duplicates[item.key] = [];
+                    duplicates[item.key].push(item.name);
                 }
             });
 
-            // Collect Playlist
-            const paths = [];
-            const playlistElements = document.querySelectorAll('#playlistList .video-path');
-            playlistElements.forEach(input => {
-                const path = input.value.trim();
-                if (path) paths.push(path);
-            });
-            if (fullConfig.videos && fullConfig.videos.length > 0) {
-                fullConfig.videos[0].playlists = paths;
+            let dupErrors = [];
+            for (const key in duplicates) {
+                if (duplicates[key].length > 1) {
+                    dupErrors.push(`Key "${key.toUpperCase()}" mapped to multiple: ${duplicates[key].join(', ')}`);
+                }
+            }
+
+            if (dupErrors.length > 0) {
+                showToast('Duplicate Binding Alert', dupErrors.join('<br>'), 'error');
+                return;
             }
 
             try {
@@ -741,53 +2271,40 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 });
                 
                 if (res.ok) {
-                    showSuccess();
+                    showToast('Settings Saved', 'Configuration successfully updated and reloaded.', 'success');
+                    fetchConfig(); // Reload from disk to verify
                 } else {
                     const data = await res.json();
                     if (data.errors && data.errors.length > 0) {
-                        showError('Validation failed:<br>' + data.errors.map(e => `• ${e}`).join('<br>'));
+                        showToast('Validation Failed', 'The display server rejected configurations:<br>' + data.errors.map(e => `&bull; ${e}`).join('<br>'), 'error');
                     } else {
-                        showError('Failed to save configuration due to server error.');
+                        showToast('Server Error', 'Failed to write configurations to backend.', 'error');
                     }
                 }
             } catch (err) {
-                showError('Network error saving configuration.');
+                showToast('Connection Error', 'Network failed saving settings.', 'error');
             }
         }
 
-        // Send Key Press
+        // Send Key Command to Virtual Remote API
         async function sendControl(keyName) {
             try {
-                await fetch('/api/control', {
+                const res = await fetch('/api/control', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: keyName })
                 });
+                if (res.ok) {
+                    showToast('Key Injected', `Successfully sent key press for "${keyName.toUpperCase()}".`, 'info');
+                } else {
+                    showToast('Keystroke Refused', `Engine rejected key: "${keyName}"`, 'error');
+                }
             } catch (err) {
                 console.error('Failed to send control command:', err);
             }
         }
 
-        function showError(msg) {
-            const alert = document.getElementById('errorAlert');
-            alert.innerHTML = msg;
-            alert.style.display = 'block';
-            document.getElementById('successAlert').style.display = 'none';
-        }
-
-        function showSuccess() {
-            document.getElementById('errorAlert').style.display = 'none';
-            const alert = document.getElementById('successAlert');
-            alert.style.display = 'block';
-            setTimeout(() => { alert.style.display = 'none'; }, 4000);
-        }
-
-        function hideAlerts() {
-            document.getElementById('errorAlert').style.display = 'none';
-            document.getElementById('successAlert').style.display = 'none';
-        }
-
-        // Init
+        // Initializer
         fetchConfig();
     </script>
 </body>

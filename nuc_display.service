@@ -14,11 +14,10 @@ RestartSec=5
 Environment=XDG_RUNTIME_DIR=/run/user/@UID@
 Environment=GDK_BACKEND=drm
 Environment=EGL_PLATFORM=gbm
-# ALSA configuration
+# ALSA configuration (Set to 0 or your specific card ID if known, e.g., PCH)
 Environment=ALSA_CARD=@ALSA_CARD@
 
 # Security and Sandbox (Optional but good practice)
-# We need to keep some privileges for DRM/Render access
 SupplementaryGroups=video render audio plugdev input
 
 [Install]

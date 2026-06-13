@@ -455,8 +455,12 @@ TEST(NewsModuleTest, UserAgentAndFallback) {
     // Mock Google News failure
     g_curl_mock.mock_errors["https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en"] = CURLE_COULDNT_CONNECT;
     
+    std::vector<std::string> urls = {
+        "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
+        "http://feeds.bbci.co.uk/news/rss.xml"
+    };
     NewsModule module;
-    module.update_headlines();
+    module.update_headlines(urls);
     
     // Verify it set the User-Agent
     EXPECT_FALSE(g_curl_mock.last_user_agent.empty());
@@ -478,8 +482,12 @@ TEST(NewsModuleTest, MalformedAndEmptyRSS) {
     // BBC returns empty string
     g_curl_mock.mock_responses["http://feeds.bbci.co.uk/news/rss.xml"] = "";
     
+    std::vector<std::string> urls = {
+        "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
+        "http://feeds.bbci.co.uk/news/rss.xml"
+    };
     NewsModule module;
-    module.update_headlines();
+    module.update_headlines(urls);
     
     // Verify both were requested
     EXPECT_EQ(g_curl_mock.requested_urls.size(), 2u);

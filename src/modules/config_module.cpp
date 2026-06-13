@@ -239,6 +239,11 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
     ps["end_time"] = config.power_save.end_time;
     j["power_save"] = ps;
 
+    nlohmann::json ns;
+    ns["enabled"] = config.news.enabled;
+    ns["sources"] = config.news.sources;
+    j["news"] = ns;
+
     std::ofstream out(filepath);
     if (out.is_open()) {
         out << j.dump(4);
@@ -295,6 +300,12 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
         config.power_save.start_time = "23:00";
         config.power_save.end_time = "07:00";
 
+        config.news.enabled = true;
+        config.news.sources = {
+            "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
+            "http://feeds.bbci.co.uk/news/rss.xml"
+        };
+
         needs_save = true;
     } else {
         try {
@@ -327,6 +338,26 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 config.power_save.enabled = ps.value("enabled", false);
                 config.power_save.start_time = ps.value("start_time", "23:00");
                 config.power_save.end_time = ps.value("end_time", "07:00");
+            }
+
+            // Parse news
+            if (j.contains("news") && j["news"].is_object()) {
+                auto& ns = j["news"];
+                config.news.enabled = ns.value("enabled", true);
+                if (ns.contains("sources") && ns["sources"].is_array()) {
+                    for (const auto& item : ns["sources"]) {
+                        if (item.is_string()) {
+                            config.news.sources.push_back(item);
+                        }
+                    }
+                }
+            } else {
+                config.news.enabled = true;
+                config.news.sources = {
+                    "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
+                    "http://feeds.bbci.co.uk/news/rss.xml"
+                };
+                needs_save = true;
             }
 
             // Parse global_keys

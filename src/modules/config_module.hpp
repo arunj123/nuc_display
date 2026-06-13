@@ -89,6 +89,11 @@ struct PowerSaveConfig {
     std::string end_time = "07:00";
 };
 
+struct NewsConfig {
+    bool enabled = true;
+    std::vector<std::string> sources;
+};
+
 struct AppConfig {
     LocationConfig location;
     std::vector<StockConfig> stocks;
@@ -98,6 +103,7 @@ struct AppConfig {
     GlobalKeysConfig global_keys;
     StockKeysConfig stock_keys;
     PowerSaveConfig power_save;
+    NewsConfig news;
 };
 
 

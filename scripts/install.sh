@@ -35,7 +35,10 @@ if [[ $WORKDIR_VAL == */scripts ]]; then
 fi
 UID_VAL=$(id -u $USER_VAL)
 # Try to find the first ALSA card
-ALSA_CARD_VAL=$(aplay -l | grep "^card" | head -n 1 | cut -d" " -f2 | cut -d":" -f1 || echo "0")
+ALSA_CARD_VAL=$(aplay -l | grep "^card" | head -n 1 | cut -d" " -f2 | cut -d":" -f1 || true)
+if [ -z "$ALSA_CARD_VAL" ]; then
+    ALSA_CARD_VAL="0"
+fi
 
 echo "Detected Configuration:"
 echo "  User: $USER_VAL"

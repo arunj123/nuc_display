@@ -20,12 +20,12 @@ size_t NewsModule::WriteCallback(void* contents, size_t size, size_t nmemb, void
     return size * nmemb;
 }
 
-void NewsModule::update_headlines() {
-    std::vector<std::string> urls = {
-        "https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en",
-        "http://feeds.bbci.co.uk/news/rss.xml"
-    };
-
+void NewsModule::update_headlines(const std::vector<std::string>& urls) {
+    if (urls.empty()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        headlines_.clear();
+        return;
+    }
     std::vector<NewsItem> items;
 
     for (const auto& url : urls) {

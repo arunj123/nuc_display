@@ -117,8 +117,8 @@ int main(int argc, char** argv) {
     bool headless_mode = false;
     auto dm_result = core::DisplayManager::create();
     if (!dm_result) {
-        if (dm_result.error() == core::DisplayError::DrmConnectorFailed) {
-            std::cerr << "[Core] No display connected. Entering Headless Mode (Logic Only).\n";
+        if (dm_result.error() == core::DisplayError::DrmConnectorFailed || dm_result.error() == core::DisplayError::DrmOpenFailed) {
+            std::cerr << "[Core] Display hardware not available. Entering Headless Mode (Logic Only).\n";
             headless_mode = true;
         } else {
             std::cerr << "[Core] Failed to initialize Display Manager: " 
@@ -258,8 +258,10 @@ int main(int argc, char** argv) {
         stock_module->update_all_data();
     });
 
-    auto news_task = thread_pool.enqueue([&news_module]() {
-        news_module->update_headlines();
+    auto news_task = thread_pool.enqueue([&news_module, &app_config]() {
+        if (app_config.news.enabled) {
+            news_module->update_headlines(app_config.news.sources);
+        }
     });
 
     // Performance Monitor
@@ -354,8 +356,10 @@ int main(int argc, char** argv) {
                 weather_task = thread_pool.enqueue([&weather_module, lat = app_config.location.lat, lon = app_config.location.lon, name = app_config.location.name]() {
                     return weather_module->fetch_current_weather(lat, lon, name);
                 });
-                news_task = thread_pool.enqueue([&news_module]() {
-                    news_module->update_headlines();
+                news_task = thread_pool.enqueue([&news_module, &app_config]() {
+                    if (app_config.news.enabled) {
+                        news_module->update_headlines(app_config.news.sources);
+                    }
                 });
                 
                 // Re-initialize video decoders
@@ -575,8 +579,10 @@ int main(int argc, char** argv) {
 
         if (std::chrono::duration_cast<std::chrono::minutes>(now - last_news_update).count() >= news_retry_min &&
             std::chrono::duration_cast<std::chrono::seconds>(now - last_news_update).count() >= news_retry_sec) {
-            news_task = thread_pool.enqueue([&news_module]() {
-                news_module->update_headlines();
+            news_task = thread_pool.enqueue([&news_module, &app_config]() {
+                if (app_config.news.enabled) {
+                    news_module->update_headlines(app_config.news.sources);
+                }
             });
             last_news_update = now;
         }
@@ -675,7 +681,9 @@ int main(int argc, char** argv) {
                     break;
 
                 case modules::LayoutType::News:
-                    news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
+                    if (app_config.news.enabled) {
+                        news_module->render(*renderer, *text_renderer, 0.03f, 0.80f, 0.36f, 0.18f, render_time_sec);
+                    }
                     break;
 
                 case modules::LayoutType::Video: {
