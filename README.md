@@ -80,6 +80,29 @@ The dashboard supports multiple, independent hardware-accelerated video streams.
 
 ---
 
+## 🌐 Web Configuration Portal
+
+The application offers an embedded, premium web portal to manage settings, adjust coordinates, inspect screen layouts, and execute remote commands.
+
+### Running the Web Server
+To launch the dashboard with the web server enabled, pass the `--http-server` flag:
+```bash
+./build/nuc_display --http-server
+```
+You can customize the port using the `--http-port` option (defaults to `8080`):
+```bash
+./build/nuc_display --http-server --http-port 8080
+```
+
+### Key Features
+- **Real-Time Layout Preview**: A visual 16:9 canvas representing the screen, showing the exact position, size, and drawing order (z-index) of your active video and camera regions.
+- **Double Range Sliders**: Adjust layout dimensions and cropping areas visually.
+- **Dynamic Configuration**: Edit location coordinates, geocode addresses via Open-Meteo, add/remove stock tickers, change RSS news sources, manage video playlists, and configure camera inputs.
+- **Duplicate Key Validation**: Detects and highlights overlapping keyboard shortcut assignments client-side before saving.
+- **Virtual Remote Control**: Send keystrokes directly to the display engine to navigate stocks, chart intervals, play/pause videos, and toggle layout groups.
+
+---
+
 ## 🖥 Service Management
 
 The application runs as a systemd service, ensuring high availability.
