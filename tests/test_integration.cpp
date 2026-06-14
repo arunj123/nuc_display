@@ -121,7 +121,7 @@ static std::string get_project_root() {
     auto dir = exe_path.parent_path(); // build_hw/tests or build/tests
     // Go up to project root (tests/../..)
     for (int i = 0; i < 3; ++i) {
-        if (std::filesystem::exists(dir / "config.json") || 
+        if (std::filesystem::exists(dir / "config.json") && 
             std::filesystem::exists(dir / "assets")) {
             return dir.string();
         }
