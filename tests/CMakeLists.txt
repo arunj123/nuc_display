@@ -34,6 +34,7 @@ add_executable(test_modules
     ../src/modules/stock_module.cpp
     ../src/modules/input_module.cpp
     ../src/modules/http_server_module.cpp
+    ../src/modules/container_reader.cpp
     ../src/core/renderer.cpp
 )
 target_include_directories(test_modules PRIVATE ${TEST_INCLUDE_DIRS})
@@ -45,6 +46,9 @@ target_link_libraries(test_modules
     ${LIBPNG_LIBRARIES}
     ${GLESv2_LIBRARIES}
     ${CURL_LIBRARIES}
+    ${AVFORMAT_LIBRARIES}
+    ${AVCODEC_LIBRARIES}
+    ${AVUTIL_LIBRARIES}
     nlohmann_json::nlohmann_json
     qrcodegen
 )

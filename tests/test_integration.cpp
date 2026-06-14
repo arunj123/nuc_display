@@ -191,6 +191,9 @@ static bool generate_test_config() {
     ],
     "http_server": {
         "enabled": false
+    },
+    "power_save": {
+        "enabled": false
     }
 })";
     f.close();
@@ -436,6 +439,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Check if the service is active and stop it to release DRM master and wake up target display
+    bool service_was_active = false;
+    if (std::system("systemctl is-active --quiet nuc_display") == 0) {
+        std::cout << "[Test] nuc_display service is active. Stopping it to release DRM master...\n";
+        std::system("systemctl stop nuc_display");
+        service_was_active = true;
+    }
+
     // Find the nuc_display binary
     std::string root = get_project_root();
     std::string binary = "";
@@ -531,6 +542,11 @@ int main(int argc, char** argv) {
     }
     
     std::cout << "\nTotal: " << passed << " passed, " << failed << " failed\n";
+    
+    if (service_was_active) {
+        std::cout << "[Test] Restarting nuc_display service...\n";
+        std::system("systemctl start nuc_display");
+    }
     
     return (failed > 0) ? 1 : 0;
 }

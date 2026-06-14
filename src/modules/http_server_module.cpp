@@ -2,6 +2,7 @@
 #include "modules/input_module.hpp"
 #include "modules/config_module.hpp"
 #include "modules/config_validator.hpp"
+#include "modules/container_reader.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -1307,7 +1308,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 </div>
 
                 <div class="mockup-container">
-                    <label style="color:var(--text-primary); font-size:1.05rem; font-weight:600; margin-bottom:0.25rem;">NUC Screen Layout Preview</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                        <label style="color:var(--text-primary); font-size:1.05rem; font-weight:600;">NUC Screen Layout Preview</label>
+                        <div id="interactionModeSelector" style="display: none; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.03); padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-right: 4px;">Edit Mode:</span>
+                            <button id="modeBtnLayout" class="btn btn-small" onclick="setInteractionMode('layout')" style="padding: 2px 8px; font-size: 0.75rem;">Layout</button>
+                            <button id="modeBtnCrop" class="btn btn-secondary btn-small" onclick="setInteractionMode('crop')" style="padding: 2px 8px; font-size: 0.75rem;">Crop</button>
+                        </div>
+                    </div>
                     <span style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:1rem;">Interactive simulation showing screen zones in priority z-order</span>
                     
                     <div class="mockup-screen">
@@ -1595,6 +1603,12 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         let selectedLayer = null;
         let savedConfigString = '';
         let activeBrowseTarget = null;
+        let interactionMode = 'layout';
+
+        function setInteractionMode(mode) {
+            interactionMode = mode;
+            updateLayoutPreview();
+        }
 
         function copyToClipboard(text) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1686,9 +1700,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             }
             if (cfg.videos) {
                 cfg.videos.forEach(v => {
+                    delete v.lock_aspect;
                     if (v.playlists) {
                         v.playlists = v.playlists.filter(p => p.trim() !== '');
                     }
+                });
+            }
+            if (cfg.cameras) {
+                cfg.cameras.forEach(c => {
+                    delete c.lock_aspect;
                 });
             }
             return cfg;
@@ -1778,6 +1798,59 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 modal.style.display = 'none';
             }
             activeBrowseTarget = null;
+        }
+
+        function updateLockAspect(type, idx, checked) {
+            fullConfig[type][idx].lock_aspect = checked;
+            localStorage.setItem(`lock_aspect_${type}_${idx}`, checked ? 'true' : 'false');
+        }
+
+        async function resizeToVideoSize(vIdx, pIdx) {
+            const path = fullConfig.videos[vIdx].playlists[pIdx];
+            if (!path || path.trim() === '') {
+                showToast('Validation Alert', 'Please enter or select a video path first.', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/media/dimensions?file=${encodeURIComponent(path)}`);
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed to fetch video details.');
+                }
+                const dimensions = await res.json();
+                const { width, height } = dimensions;
+                if (!width || !height) throw new Error('Invalid dimensions received.');
+
+                let targetW = width / 1920.0;
+                let targetH = height / 1080.0;
+                if (targetW > 1.0 || targetH > 1.0) {
+                    const factor = Math.max(targetW, targetH);
+                    targetW /= factor;
+                    targetH /= factor;
+                }
+                
+                const video = fullConfig.videos[vIdx];
+                video.w = parseFloat(targetW.toFixed(2));
+                video.h = parseFloat(targetH.toFixed(2));
+                if (video.x + video.w > 1.0) video.x = parseFloat((1.0 - video.w).toFixed(2));
+                if (video.y + video.h > 1.0) video.y = parseFloat((1.0 - video.h).toFixed(2));
+                
+                video.src_x = 0.0;
+                video.src_y = 0.0;
+                video.src_w = 1.0;
+                video.src_h = 1.0;
+
+                renderVideosAccordion();
+                updateLayoutPreview();
+                if (selectedLayer && selectedLayer.type === 'video' && selectedLayer.index === vIdx) {
+                    updateUIFieldsForLayer('video', vIdx);
+                }
+                showToast('Layout Adjusted', `Resized video region to match ${width}x${height} aspect ratio (w=${video.w}, h=${video.h}).`, 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('Fetch Size Failed', err.message || 'Could not query video size from server.', 'error');
+            }
         }
 
         async function triggerPlayStop(index) {
@@ -1925,9 +1998,19 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             }
         }
 
-        // Populate fields
         function populateFormFields() {
             if (!fullConfig) return;
+
+            if (fullConfig.videos) {
+                fullConfig.videos.forEach((v, idx) => {
+                    v.lock_aspect = localStorage.getItem(`lock_aspect_videos_${idx}`) === 'true';
+                });
+            }
+            if (fullConfig.cameras) {
+                fullConfig.cameras.forEach((c, idx) => {
+                    c.lock_aspect = localStorage.getItem(`lock_aspect_cameras_${idx}`) === 'true';
+                });
+            }
 
             // Stats
             document.getElementById('statsLocation').textContent = fullConfig.location.name || 'N/A';
@@ -2061,6 +2144,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         <div class="list-item" style="margin-bottom:0.4rem;">
                             <input type="text" placeholder="e.g. tests/sample.mp4" value="${path}" oninput="updateVideoPlaylistPath(${index}, ${pIdx}, this.value)" style="flex:1;">
                             <button class="btn btn-secondary btn-small" onclick="openBrowseModal(${index}, ${pIdx})">Browse</button>
+                            <button class="btn btn-secondary btn-small" onclick="resizeToVideoSize(${index}, ${pIdx})">Match Size</button>
                             <button class="btn btn-danger btn-small" onclick="deleteVideoPlaylistPath(${index}, ${pIdx})">&times;</button>
                         </div>
                     `).join('');
@@ -2137,6 +2221,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                     <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:1rem;">Target Layout Rect Coordinates</h4>
                                     
                                     ${renderCoordSliders(index, 'videos', v)}
+                                    
+                                    <div class="toggle-container" style="background:rgba(255,255,255,0.015); margin-top:0.5rem; margin-bottom:0.5rem; padding: 0.5rem 1rem; border-radius: 8px;">
+                                        <label for="vLockAspect-${index}" style="font-size:0.85rem; color:var(--text-secondary);">Lock Aspect Ratio</label>
+                                        <label class="switch" style="transform: scale(0.8);">
+                                            <input type="checkbox" id="vLockAspect-${index}" ${v.lock_aspect ? 'checked' : ''} onchange="updateLockAspect('videos', ${index}, this.checked)">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
                                     
                                     <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin: 1.5rem 0 1rem 0;">Source Media Crop Region</h4>
                                     
@@ -2357,6 +2449,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                 <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:1rem;">Screen Destination Coordinates</h4>
                                 ${renderCoordSliders(index, 'cameras', cam)}
                                 
+                                <div class="toggle-container" style="background:rgba(255,255,255,0.015); margin-top:0.5rem; margin-bottom:0.5rem; padding: 0.5rem 1rem; border-radius: 8px;">
+                                    <label for="cLockAspect-${index}" style="font-size:0.85rem; color:var(--text-secondary);">Lock Aspect Ratio</label>
+                                    <label class="switch" style="transform: scale(0.8);">
+                                        <input type="checkbox" id="cLockAspect-${index}" ${cam.lock_aspect ? 'checked' : ''} onchange="updateLockAspect('cameras', ${index}, this.checked)">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                
                                 <h4 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-secondary); margin:1.5rem 0 1rem 0;">Source Sensor Crop Rect</h4>
                                 ${renderCropCoordSliders(index, 'cameras', cam)}
 
@@ -2481,6 +2581,26 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             const container = document.getElementById('mockupLayersContainer');
             container.innerHTML = '';
 
+            // Mode selector visibility
+            const interactionSel = document.getElementById('interactionModeSelector');
+            if (selectedLayer && (selectedLayer.type === 'video' || selectedLayer.type === 'camera')) {
+                if (interactionSel) interactionSel.style.display = 'flex';
+                const btnLayout = document.getElementById('modeBtnLayout');
+                const btnCrop = document.getElementById('modeBtnCrop');
+                if (btnLayout && btnCrop) {
+                    if (interactionMode === 'layout') {
+                        btnLayout.className = 'btn btn-small';
+                        btnCrop.className = 'btn btn-secondary btn-small';
+                    } else {
+                        btnLayout.className = 'btn btn-secondary btn-small';
+                        btnCrop.className = 'btn btn-small';
+                    }
+                }
+            } else {
+                interactionMode = 'layout';
+                if (interactionSel) interactionSel.style.display = 'none';
+            }
+
             // Draw order: first = behind, last = on top.
             fullConfig.layout.forEach((layer) => {
                 let div = document.createElement('div');
@@ -2528,9 +2648,38 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         
                         if (selectedLayer && selectedLayer.type === 'video' && selectedLayer.index === layer.video_index) {
                             div.classList.add('selected');
-                            const handle = document.createElement('div');
-                            handle.className = 'resize-handle';
-                            div.appendChild(handle);
+                            if (interactionMode === 'layout') {
+                                const handle = document.createElement('div');
+                                handle.className = 'resize-handle';
+                                div.appendChild(handle);
+                            } else if (interactionMode === 'crop') {
+                                const cropBox = document.createElement('div');
+                                cropBox.className = 'inner-crop-box';
+                                cropBox.style.position = 'absolute';
+                                cropBox.style.left = `${(v.src_x !== undefined ? v.src_x : 0) * 100}%`;
+                                cropBox.style.top = `${(v.src_y !== undefined ? v.src_y : 0) * 100}%`;
+                                cropBox.style.width = `${(v.src_w !== undefined ? v.src_w : 1) * 100}%`;
+                                cropBox.style.height = `${(v.src_h !== undefined ? v.src_h : 1) * 100}%`;
+                                cropBox.style.border = '2px dashed #ffa500';
+                                cropBox.style.background = 'rgba(255, 165, 0, 0.15)';
+                                cropBox.style.boxShadow = '0 0 8px rgba(255, 165, 0, 0.4)';
+                                cropBox.style.cursor = 'move';
+                                cropBox.style.zIndex = '1002';
+                                cropBox.innerHTML = `<span style="position: absolute; top: 2px; left: 4px; font-size: 0.6rem; color: #ffa500; font-weight: bold; background: rgba(0,0,0,0.6); padding: 1px 3px; border-radius: 2px; pointer-events: none;">Crop</span>`;
+                                
+                                const cropHandle = document.createElement('div');
+                                cropHandle.className = 'crop-resize-handle';
+                                cropHandle.style.position = 'absolute';
+                                cropHandle.style.right = '0';
+                                cropHandle.style.bottom = '0';
+                                cropHandle.style.width = '10px';
+                                cropHandle.style.height = '10px';
+                                cropHandle.style.background = '#ffa500';
+                                cropHandle.style.cursor = 'se-resize';
+                                cropHandle.style.boxShadow = '0 0 4px rgba(255, 165, 0, 0.6)';
+                                cropBox.appendChild(cropHandle);
+                                div.appendChild(cropBox);
+                            }
                         }
                         
                         div.addEventListener('click', (e) => {
@@ -2557,9 +2706,38 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         
                         if (selectedLayer && selectedLayer.type === 'camera' && selectedLayer.index === layer.camera_index) {
                             div.classList.add('selected');
-                            const handle = document.createElement('div');
-                            handle.className = 'resize-handle';
-                            div.appendChild(handle);
+                            if (interactionMode === 'layout') {
+                                const handle = document.createElement('div');
+                                handle.className = 'resize-handle';
+                                div.appendChild(handle);
+                            } else if (interactionMode === 'crop') {
+                                const cropBox = document.createElement('div');
+                                cropBox.className = 'inner-crop-box';
+                                cropBox.style.position = 'absolute';
+                                cropBox.style.left = `${(c.src_x !== undefined ? c.src_x : 0) * 100}%`;
+                                cropBox.style.top = `${(c.src_y !== undefined ? c.src_y : 0) * 100}%`;
+                                cropBox.style.width = `${(c.src_w !== undefined ? c.src_w : 1) * 100}%`;
+                                cropBox.style.height = `${(c.src_h !== undefined ? c.src_h : 1) * 100}%`;
+                                cropBox.style.border = '2px dashed #ffa500';
+                                cropBox.style.background = 'rgba(255, 165, 0, 0.15)';
+                                cropBox.style.boxShadow = '0 0 8px rgba(255, 165, 0, 0.4)';
+                                cropBox.style.cursor = 'move';
+                                cropBox.style.zIndex = '1002';
+                                cropBox.innerHTML = `<span style="position: absolute; top: 2px; left: 4px; font-size: 0.6rem; color: #ffa500; font-weight: bold; background: rgba(0,0,0,0.6); padding: 1px 3px; border-radius: 2px; pointer-events: none;">Crop</span>`;
+                                
+                                const cropHandle = document.createElement('div');
+                                cropHandle.className = 'crop-resize-handle';
+                                cropHandle.style.position = 'absolute';
+                                cropHandle.style.right = '0';
+                                cropHandle.style.bottom = '0';
+                                cropHandle.style.width = '10px';
+                                cropHandle.style.height = '10px';
+                                cropHandle.style.background = '#ffa500';
+                                cropHandle.style.cursor = 'se-resize';
+                                cropHandle.style.boxShadow = '0 0 4px rgba(255, 165, 0, 0.6)';
+                                cropBox.appendChild(cropHandle);
+                                div.appendChild(cropBox);
+                            }
                         }
                         
                         div.addEventListener('click', (e) => {
@@ -2576,16 +2754,153 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         function setupLayerInteractions(div, container, layer, item) {
+            const isSelected = selectedLayer && selectedLayer.type === layer.type && selectedLayer.index === (layer.type === 'video' ? layer.video_index : layer.camera_index);
+            
+            // If in crop mode and this layer is selected, set up crop box interactions
+            if (isSelected && interactionMode === 'crop') {
+                const cropBox = div.querySelector('.inner-crop-box');
+                const cropHandle = div.querySelector('.crop-resize-handle');
+                if (cropBox && cropHandle) {
+                    cropBox.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        
+                        let isResizing = (e.target === cropHandle);
+                        let isDragging = !isResizing;
+                        
+                        const rect = div.getBoundingClientRect();
+                        const startX = e.clientX;
+                        const startY = e.clientY;
+                        
+                        const currentX = item.src_x !== undefined ? item.src_x : 0;
+                        const currentY = item.src_y !== undefined ? item.src_y : 0;
+                        const currentW = item.src_w !== undefined ? item.src_w : 1;
+                        const currentH = item.src_h !== undefined ? item.src_h : 1;
+                        
+                        const startLeft = currentX * rect.width;
+                        const startTop = currentY * rect.height;
+                        const startWidth = currentW * rect.width;
+                        const startHeight = currentH * rect.height;
+                        
+                        let moved = false;
+                        
+                        const onMouseMove = (moveEv) => {
+                            moved = true;
+                            const dx = moveEv.clientX - startX;
+                            const dy = moveEv.clientY - startY;
+                            const currentRect = div.getBoundingClientRect();
+                            
+                            if (isDragging) {
+                                let newLeft = startLeft + dx;
+                                let newTop = startTop + dy;
+                                
+                                newLeft = Math.max(0, Math.min(currentRect.width - startWidth, newLeft));
+                                newTop = Math.max(0, Math.min(currentRect.height - startHeight, newTop));
+                                
+                                item.src_x = parseFloat((newLeft / currentRect.width).toFixed(2));
+                                item.src_y = parseFloat((newTop / currentRect.height).toFixed(2));
+                            } else if (isResizing) {
+                                let newWidth = startWidth + dx;
+                                let newHeight = startHeight + dy;
+                                
+                                const lock = moveEv.shiftKey || item.lock_aspect;
+                                if (lock) {
+                                    const aspectRatio = startWidth / startHeight;
+                                    if (Math.abs(dx) > Math.abs(dy)) {
+                                        newHeight = newWidth / aspectRatio;
+                                        
+                                        const minH = currentRect.height * 0.05;
+                                        const maxH = currentRect.height - startTop;
+                                        if (newHeight < minH) {
+                                            newHeight = minH;
+                                            newWidth = newHeight * aspectRatio;
+                                        } else if (newHeight > maxH) {
+                                            newHeight = maxH;
+                                            newWidth = newHeight * aspectRatio;
+                                        }
+                                        
+                                        const minW = currentRect.width * 0.05;
+                                        const maxW = currentRect.width - startLeft;
+                                        if (newWidth < minW) {
+                                            newWidth = minW;
+                                            newHeight = newWidth / aspectRatio;
+                                        } else if (newWidth > maxW) {
+                                            newWidth = maxW;
+                                            newHeight = newWidth / aspectRatio;
+                                        }
+                                    } else {
+                                        newWidth = newHeight * aspectRatio;
+                                        
+                                        const minW = currentRect.width * 0.05;
+                                        const maxW = currentRect.width - startLeft;
+                                        if (newWidth < minW) {
+                                            newWidth = minW;
+                                            newHeight = newWidth / aspectRatio;
+                                        } else if (newWidth > maxW) {
+                                            newWidth = maxW;
+                                            newHeight = newWidth / aspectRatio;
+                                        }
+                                        
+                                        const minH = currentRect.height * 0.05;
+                                        const maxH = currentRect.height - startTop;
+                                        if (newHeight < minH) {
+                                            newHeight = minH;
+                                            newWidth = newHeight * aspectRatio;
+                                        } else if (newHeight > maxH) {
+                                            newHeight = maxH;
+                                            newWidth = newHeight * aspectRatio;
+                                        }
+                                    }
+                                } else {
+                                    newWidth = Math.max(currentRect.width * 0.05, Math.min(currentRect.width - startLeft, newWidth));
+                                    newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
+                                }
+                                
+                                item.src_w = parseFloat((newWidth / currentRect.width).toFixed(2));
+                                item.src_h = parseFloat((newHeight / currentRect.height).toFixed(2));
+                            }
+                            
+                            cropBox.style.left = `${item.src_x * 100}%`;
+                            cropBox.style.top = `${item.src_y * 100}%`;
+                            cropBox.style.width = `${item.src_w * 100}%`;
+                            cropBox.style.height = `${item.src_h * 100}%`;
+                            
+                            updateUIFieldsForCrop(layer.type, selectedLayer.index);
+                        };
+                        
+                        const onMouseUp = () => {
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
+                        
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    });
+                }
+            }
+
+            // Layout Mode interaction (dragging the layer or layout resize-handle)
             div.addEventListener('mousedown', (e) => {
+                // Ignore layout moves if clicking inner-crop-box or crop-resize-handle
+                if (e.target.closest('.inner-crop-box')) return;
+                
                 selectedLayer = { type: layer.type, index: layer.type === 'video' ? layer.video_index : layer.camera_index };
                 
-                document.querySelectorAll('.mockup-layer').forEach(l => l.classList.remove('selected'));
-                document.querySelectorAll('.resize-handle').forEach(h => h.remove());
-                
-                div.classList.add('selected');
-                const handle = document.createElement('div');
-                handle.className = 'resize-handle';
-                div.appendChild(handle);
+                const wasSelected = isSelected;
+                if (!wasSelected) {
+                    document.querySelectorAll('.mockup-layer').forEach(l => l.classList.remove('selected'));
+                    document.querySelectorAll('.resize-handle').forEach(h => h.remove());
+                    document.querySelectorAll('.inner-crop-box').forEach(b => b.remove());
+                    
+                    div.classList.add('selected');
+                    if (interactionMode === 'layout') {
+                        const handle = document.createElement('div');
+                        handle.className = 'resize-handle';
+                        div.appendChild(handle);
+                    }
+                    updateLayoutPreview();
+                    return;
+                }
                 
                 let isResizing = (e.target.classList.contains('resize-handle'));
                 let isDragging = !isResizing;
@@ -2620,8 +2935,58 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         let newWidth = startWidth + dx;
                         let newHeight = startHeight + dy;
                         
-                        newWidth = Math.max(currentRect.width * 0.05, Math.min(currentRect.width - startLeft, newWidth));
-                        newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
+                        const lock = moveEv.shiftKey || item.lock_aspect;
+                        if (lock) {
+                            const aspectRatio = startWidth / startHeight;
+                            if (Math.abs(dx) > Math.abs(dy)) {
+                                newHeight = newWidth / aspectRatio;
+                                
+                                const minH = currentRect.height * 0.05;
+                                const maxH = currentRect.height - startTop;
+                                if (newHeight < minH) {
+                                    newHeight = minH;
+                                    newWidth = newHeight * aspectRatio;
+                                } else if (newHeight > maxH) {
+                                    newHeight = maxH;
+                                    newWidth = newHeight * aspectRatio;
+                                }
+                                
+                                const minW = currentRect.width * 0.05;
+                                const maxW = currentRect.width - startLeft;
+                                if (newWidth < minW) {
+                                    newWidth = minW;
+                                    newHeight = newWidth / aspectRatio;
+                                } else if (newWidth > maxW) {
+                                    newWidth = maxW;
+                                    newHeight = newWidth / aspectRatio;
+                                }
+                            } else {
+                                newWidth = newHeight * aspectRatio;
+                                
+                                const minW = currentRect.width * 0.05;
+                                const maxW = currentRect.width - startLeft;
+                                if (newWidth < minW) {
+                                    newWidth = minW;
+                                    newHeight = newWidth / aspectRatio;
+                                } else if (newWidth > maxW) {
+                                    newWidth = maxW;
+                                    newHeight = newWidth / aspectRatio;
+                                }
+                                
+                                const minH = currentRect.height * 0.05;
+                                const maxH = currentRect.height - startTop;
+                                if (newHeight < minH) {
+                                    newHeight = minH;
+                                    newWidth = newHeight * aspectRatio;
+                                } else if (newHeight > maxH) {
+                                    newHeight = maxH;
+                                    newWidth = newHeight * aspectRatio;
+                                }
+                            }
+                        } else {
+                            newWidth = Math.max(currentRect.width * 0.05, Math.min(currentRect.width - startLeft, newWidth));
+                            newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
+                        }
                         
                         item.w = parseFloat((newWidth / currentRect.width).toFixed(2));
                         item.h = parseFloat((newHeight / currentRect.height).toFixed(2));
@@ -2770,7 +3135,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 const res = await fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(fullConfig)
+                    body: JSON.stringify(getCurrentUIConfig())
                 });
                 
                 if (res.ok) {
@@ -2821,6 +3186,21 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 const label = document.getElementById(`${typeStr}-${idx}-val-${c}`);
                 if (label) {
                     label.textContent = item[c].toFixed(2);
+                }
+            });
+        }
+
+        function updateUIFieldsForCrop(type, idx) {
+            const item = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
+            const typeStr = type === 'video' ? 'videos' : 'cameras';
+            ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
+                const slider = document.querySelector(`input[oninput*="updateCoordSlider('${typeStr}', ${idx}, '${c}'"]`);
+                if (slider) {
+                    slider.value = item[c] !== undefined ? item[c] : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0);
+                }
+                const label = document.getElementById(`${typeStr}-${idx}-val-${c}`);
+                if (label) {
+                    label.textContent = (item[c] !== undefined ? item[c] : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0)).toFixed(2);
                 }
             });
         }
@@ -3550,6 +3930,77 @@ void HttpServerModule::listen_loop() {
                 response_body = std::string("{\"error\":\"") + e.what() + "\"}";
                 std::stringstream header;
                 header << "HTTP/1.1 500 Internal Error\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
+        else if (method == "GET" && uri.rfind("/api/media/dimensions", 0) == 0) {
+            try {
+                size_t param_pos = uri.find("?file=");
+                if (param_pos != std::string::npos) {
+                    std::string filename = uri.substr(param_pos + 6);
+                    std::string decoded = "";
+                    for (size_t i = 0; i < filename.length(); ++i) {
+                        if (filename[i] == '%' && i + 2 < filename.length()) {
+                            std::string hex = filename.substr(i + 1, 2);
+                            try {
+                                char chr = (char)std::stoul(hex, nullptr, 16);
+                                decoded += chr;
+                                i += 2;
+                            } catch (...) {
+                                decoded += filename[i];
+                            }
+                        } else {
+                            decoded += filename[i];
+                        }
+                    }
+                    filename = decoded;
+                    
+                    std::string file_path = filename;
+                    if (file_path.rfind("assets/media/", 0) == std::string::npos) {
+                        file_path = "assets/media/" + std::filesystem::path(file_path).filename().string();
+                    }
+                    
+                    ContainerReader reader;
+                    auto open_res = reader.open(file_path);
+                    if (open_res) {
+                        int v_stream = reader.find_video_stream();
+                        if (v_stream >= 0) {
+                            auto params = reader.get_codec_params(v_stream);
+                            if (params) {
+                                int w = params->width;
+                                int h = params->height;
+                                response_body = "{\"width\":" + std::to_string(w) + ",\"height\":" + std::to_string(h) + "}";
+                                std::stringstream header;
+                                header << "HTTP/1.1 200 OK\r\n"
+                                       << "Content-Type: application/json\r\n"
+                                       << "Content-Length: " << response_body.length() << "\r\n"
+                                       << "Connection: close\r\n\r\n";
+                                response_headers = header.str();
+                            } else {
+                                throw std::runtime_error("No codec parameters found");
+                            }
+                        } else {
+                            throw std::runtime_error("No video stream found in file");
+                        }
+                    } else {
+                        throw std::runtime_error("Failed to open media file");
+                    }
+                } else {
+                    response_body = "{\"error\":\"Missing file parameter\"}";
+                    std::stringstream header;
+                    header << "HTTP/1.1 400 Bad Request\r\n"
+                           << "Content-Type: application/json\r\n"
+                           << "Content-Length: " << response_body.length() << "\r\n"
+                           << "Connection: close\r\n\r\n";
+                    response_headers = header.str();
+                }
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
+                std::stringstream header;
+                header << "HTTP/1.1 400 Bad Request\r\n"
                        << "Content-Type: application/json\r\n"
                        << "Content-Length: " << response_body.length() << "\r\n"
                        << "Connection: close\r\n\r\n";
