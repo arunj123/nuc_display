@@ -14,4 +14,5 @@ tests/sample.mp4
 config.json
 nuc_display.service.resolved
 build_rpi/
-build_rpi/
+assets/stocks/*.png
+manual_screenshot.png
