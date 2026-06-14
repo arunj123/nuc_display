@@ -204,9 +204,9 @@ void main() {
         vec2 star_f = fract(star_uv) - 0.5;
         float r = hash(star_id);
         if (r > 0.9) {
-            float star_twinkle = 0.3 + 0.7 * sin(u_time * (2.5 + r * 2.0) + r * 6.28);
+            float star_twinkle = 0.6 + 0.4 * sin(u_time * (2.5 + r * 2.0) + r * 6.28);
             float star_d = length(star_f - (r * 0.6 - 0.3));
-            float star_radius = 0.01 + r * 0.015;
+            float star_radius = 0.022 + r * 0.028;
             float star_a = (1.0 - smoothstep(star_radius * 0.5, star_radius * 1.5, star_d)) * star_twinkle * (1.0 - cloud_density);
             
             col = mix(col, vec3(1.0), star_a);

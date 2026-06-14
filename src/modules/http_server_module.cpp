@@ -1123,6 +1123,33 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Media Browse Modal -->
+    <div id="browseModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 9, 20, 0.85); backdrop-filter: blur(10px); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="glass-panel" style="width: 90%; max-width: 600px; padding: 2rem; position: relative; border-color: rgba(0, 242, 254, 0.3); background: rgba(22, 18, 42, 0.95); display: flex; flex-direction: column; max-height: 85vh;">
+            <h2 style="margin-bottom: 1rem; font-size: 1.25rem;">Browse Media Assets</h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Select an uploaded media asset to set as the path for your playlist item.</p>
+            
+            <div style="flex: 1; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.5rem; background: rgba(6, 5, 14, 0.5);">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-color); color: var(--text-secondary); font-size: 0.85rem;">
+                            <th style="padding: 0.75rem 1rem;">File Name</th>
+                            <th style="padding: 0.75rem 1rem; width: 100px;">Size</th>
+                            <th style="padding: 0.75rem 1rem; width: 100px; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="browse-modal-list">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                <button class="btn btn-secondary" onclick="closeBrowseModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Sidebar Navigation -->
         <aside>
@@ -1566,6 +1593,237 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
     <script>
         let fullConfig = null;
         let selectedLayer = null;
+        let savedConfigString = '';
+        let activeBrowseTarget = null;
+
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        showToast('Path Copied', 'Copied relative media path to clipboard.', 'info');
+                    })
+                    .catch(err => {
+                        fallbackCopy(text);
+                    });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                if (success) {
+                    showToast('Path Copied', 'Copied relative media path to clipboard.', 'info');
+                } else {
+                    throw new Error('execCommand copy returned false');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                showToast('Copy Failed', 'Failed to copy path. Please select and copy manually.', 'error');
+            }
+        }
+
+        function getCurrentUIConfig() {
+            if (!fullConfig) return null;
+            const cfg = JSON.parse(JSON.stringify(fullConfig));
+            
+            if (cfg.location) {
+                const locNameEl = document.getElementById('locName');
+                const locLatEl = document.getElementById('locLat');
+                const locLonEl = document.getElementById('locLon');
+                if (locNameEl) cfg.location.name = locNameEl.value;
+                if (locLatEl) cfg.location.lat = parseFloat(locLatEl.value) || 0;
+                if (locLonEl) cfg.location.lon = parseFloat(locLonEl.value) || 0;
+            }
+
+            if (cfg.power_save) {
+                const psEnabledEl = document.getElementById('psEnabled');
+                const psStartEl = document.getElementById('psStart');
+                const psEndEl = document.getElementById('psEnd');
+                if (psEnabledEl) cfg.power_save.enabled = psEnabledEl.checked;
+                if (psStartEl) cfg.power_save.start_time = psStartEl.value;
+                if (psEndEl) cfg.power_save.end_time = psEndEl.value;
+            }
+
+            const newsEnabledEl = document.getElementById('newsEnabled');
+            if (newsEnabledEl) {
+                if (!cfg.news) cfg.news = { enabled: true, sources: [] };
+                cfg.news.enabled = newsEnabledEl.checked;
+            }
+
+            if (cfg.global_keys) {
+                const keyHideVideosEl = document.getElementById('keyHideVideos');
+                if (keyHideVideosEl) {
+                    cfg.global_keys.hide_videos = keyHideVideosEl.value || null;
+                }
+            }
+
+            if (cfg.stock_keys) {
+                const keyNextStockEl = document.getElementById('keyNextStock');
+                const keyPrevStockEl = document.getElementById('keyPrevStock');
+                const keyNextChartEl = document.getElementById('keyNextChart');
+                const keyPrevChartEl = document.getElementById('keyPrevChart');
+                if (keyNextStockEl) cfg.stock_keys.next_stock = keyNextStockEl.value || null;
+                if (keyPrevStockEl) cfg.stock_keys.prev_stock = keyPrevStockEl.value || null;
+                if (keyNextChartEl) cfg.stock_keys.next_chart = keyNextChartEl.value || null;
+                if (keyPrevChartEl) cfg.stock_keys.prev_chart = keyPrevChartEl.value || null;
+            }
+
+            if (cfg.stocks) {
+                cfg.stocks = cfg.stocks.filter(s => s.symbol.trim() !== '');
+            }
+            if (cfg.news && cfg.news.sources) {
+                cfg.news.sources = cfg.news.sources.filter(src => src.trim() !== '');
+            }
+            if (cfg.videos) {
+                cfg.videos.forEach(v => {
+                    if (v.playlists) {
+                        v.playlists = v.playlists.filter(p => p.trim() !== '');
+                    }
+                });
+            }
+            return cfg;
+        }
+
+        function isConfigDirty() {
+            if (!fullConfig || !savedConfigString) return false;
+            return JSON.stringify(getCurrentUIConfig()) !== savedConfigString;
+        }
+
+        async function openBrowseModal(vIdx, pIdx) {
+            activeBrowseTarget = { vIdx, pIdx };
+            const tbody = document.getElementById('browse-modal-list');
+            if (!tbody) return;
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                        Loading assets...
+                    </td>
+                </tr>
+            `;
+
+            const modal = document.getElementById('browseModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+
+            try {
+                const res = await fetch('/api/media');
+                if (!res.ok) throw new Error('API request failed');
+                const files = await res.json();
+                
+                tbody.innerHTML = '';
+                if (files.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                No media files uploaded yet. Upload files in the Media Manager tab first.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                files.forEach(file => {
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid var(--border-color)';
+                    
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    const relativePath = `assets/media/${file.name}`;
+                    
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem 1rem; font-weight: 500; word-break: break-all;">${file.name}</td>
+                        <td style="padding: 0.75rem 1rem; color: var(--text-secondary);">${sizeMB} MB</td>
+                        <td style="padding: 0.75rem 1rem; text-align: right;">
+                            <button class="btn btn-cyan btn-small" onclick="selectMediaFile('${relativePath.replace(/'/g, "\\'")}')">Select</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" style="text-align: center; padding: 2rem; color: var(--accent-primary);">
+                            Failed to load media. Check server connection.
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function selectMediaFile(path) {
+            if (activeBrowseTarget) {
+                const { vIdx, pIdx } = activeBrowseTarget;
+                updateVideoPlaylistPath(vIdx, pIdx, path);
+                renderVideosAccordion();
+                document.getElementById(`video-accordion-${vIdx}`).classList.add('open');
+            }
+            closeBrowseModal();
+        }
+
+        function closeBrowseModal() {
+            const modal = document.getElementById('browseModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            activeBrowseTarget = null;
+        }
+
+        async function triggerPlayStop(index) {
+            const video = fullConfig.videos[index];
+            if (!video) {
+                showToast('Error', 'Video decoder slot not found.', 'error');
+                return;
+            }
+            if (!video.enabled) {
+                showToast('Validation Alert', 'Cannot trigger: Video region is disabled.', 'error');
+                return;
+            }
+            const cleanPlaylists = (video.playlists || []).filter(p => p.trim() !== '');
+            if (cleanPlaylists.length === 0) {
+                showToast('Validation Alert', 'Cannot play: Playlist has no entries.', 'error');
+                return;
+            }
+
+            if (isConfigDirty()) {
+                if (confirm('You have unsaved changes. Would you like to save settings before toggling video playback?')) {
+                    const success = await saveConfig();
+                    if (!success) {
+                        showToast('Trigger Blocked', 'Settings could not be saved. Playback trigger cancelled.', 'error');
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+
+            try {
+                const res = await fetch('/api/video/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ video_index: index })
+                });
+                if (res.ok) {
+                    showToast('Playback Triggered', `Sent play/stop command for Video Player Slot #${index}.`, 'success');
+                } else {
+                    const data = await res.json();
+                    showToast('Trigger Failed', data.error || 'Server rejected playback toggle.', 'error');
+                }
+            } catch (err) {
+                showToast('Connection Error', 'Failed to communicate playback trigger to backend.', 'error');
+            }
+        }
 
         // Key Name List mapped dynamically
         const VALID_KEYS = [
@@ -1661,6 +1919,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 
                 populateFormFields();
                 updateLayoutPreview();
+                savedConfigString = JSON.stringify(getCurrentUIConfig());
             } catch (err) {
                 showToast('Failed Connection', 'Could not read settings from NUC display engine.', 'error');
             }
@@ -1801,6 +2060,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     const pathsListHTML = (v.playlists || []).map((path, pIdx) => `
                         <div class="list-item" style="margin-bottom:0.4rem;">
                             <input type="text" placeholder="e.g. tests/sample.mp4" value="${path}" oninput="updateVideoPlaylistPath(${index}, ${pIdx}, this.value)" style="flex:1;">
+                            <button class="btn btn-secondary btn-small" onclick="openBrowseModal(${index}, ${pIdx})">Browse</button>
                             <button class="btn btn-danger btn-small" onclick="deleteVideoPlaylistPath(${index}, ${pIdx})">&times;</button>
                         </div>
                     `).join('');
@@ -1858,7 +2118,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 
                                     <div class="form-group">
                                         <label>Playlist Load/Start Trigger</label>
-                                        <select onchange="updateVideoString(${index}, 'start_trigger', this.value)">${triggerOpts}</select>
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <select onchange="updateVideoString(${index}, 'start_trigger', this.value)" style="flex: 1;">${triggerOpts}</select>
+                                            <button class="btn btn-cyan btn-small" onclick="triggerPlayStop(${index})" style="white-space: nowrap; height: 38px;">Play / Stop Toggle</button>
+                                        </div>
                                     </div>
 
                                     <div class="form-group" style="margin-top:1.5rem;">
@@ -2420,7 +2683,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 
         // Save Config to Server
         async function saveConfig() {
-            if (!fullConfig) return;
+            if (!fullConfig) return false;
 
             // Gather Location
             fullConfig.location.name = document.getElementById('locName').value;
@@ -2500,7 +2763,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
 
             if (dupErrors.length > 0) {
                 showToast('Duplicate Binding Alert', dupErrors.join('<br>'), 'error');
-                return;
+                return false;
             }
 
             try {
@@ -2512,7 +2775,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 
                 if (res.ok) {
                     showToast('Settings Saved', 'Configuration successfully updated and reloaded.', 'success');
-                    fetchConfig(); // Reload from disk to verify
+                    await fetchConfig(); // Reload from disk to verify
+                    return true;
                 } else {
                     const data = await res.json();
                     if (data.errors && data.errors.length > 0) {
@@ -2520,9 +2784,11 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     } else {
                         showToast('Server Error', 'Failed to write configurations to backend.', 'error');
                     }
+                    return false;
                 }
             } catch (err) {
                 showToast('Connection Error', 'Network failed saving settings.', 'error');
+                return false;
             }
         }
 
@@ -2596,7 +2862,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                             <td style="padding: 1rem; color: var(--text-secondary);">${sizeMB} MB</td>
                             <td style="padding: 1rem; text-align: right;">
                                 <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                                    <button class="btn btn-secondary btn-small" onclick="navigator.clipboard.writeText('${relativePath}'); showToast('Path Copied', 'Copied relative media path to clipboard.', 'info');">Copy Path</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyToClipboard('${relativePath}')">Copy Path</button>
                                     <a href="/api/media/download?file=${encodeURIComponent(file.name)}" class="btn btn-cyan btn-small" style="text-decoration: none; color: #0b0914;">Download</a>
                                     <button class="btn btn-danger btn-small" onclick="deleteMediaFile('${file.name}')">Delete</button>
                                 </div>
@@ -2894,6 +3160,21 @@ QrCodeImage HttpServerModule::get_qr_code_image() {
     std::lock_guard<std::mutex> lock(qr_mutex_);
     qr_code_updated_ = false;
     return qr_image_;
+}
+
+std::optional<int> HttpServerModule::pop_video_trigger() {
+    std::lock_guard<std::mutex> lock(trigger_mutex_);
+    if (pending_triggers_.empty()) {
+        return std::nullopt;
+    }
+    int idx = pending_triggers_.front();
+    pending_triggers_.erase(pending_triggers_.begin());
+    return idx;
+}
+
+void HttpServerModule::push_video_trigger(int index) {
+    std::lock_guard<std::mutex> lock(trigger_mutex_);
+    pending_triggers_.push_back(index);
 }
 
 void HttpServerModule::start() {
@@ -3472,6 +3753,70 @@ void HttpServerModule::listen_loop() {
                 nlohmann::json err_resp;
                 err_resp["errors"] = { std::string("JSON Parse Error: ") + e.what() };
                 response_body = err_resp.dump();
+                std::stringstream header;
+                header << "HTTP/1.1 400 Bad Request\r\n"
+                       << "Content-Type: application/json\r\n"
+                       << "Content-Length: " << response_body.length() << "\r\n"
+                       << "Connection: close\r\n\r\n";
+                response_headers = header.str();
+            }
+        }
+        else if (method == "POST" && uri == "/api/video/trigger") {
+            try {
+                auto trigger_json = nlohmann::json::parse(body);
+                if (trigger_json.contains("video_index") && trigger_json["video_index"].is_number_integer()) {
+                    int video_idx = trigger_json["video_index"];
+                    
+                    int max_videos = 0;
+                    std::ifstream f(config_path_);
+                    if (!f.is_open()) {
+                        std::filesystem::path p = config_path_;
+                        for (int i = 0; i < 4; ++i) {
+                            p = "../" + p.string();
+                            std::ifstream f2(p);
+                            if (f2.is_open()) {
+                                f = std::move(f2);
+                                break;
+                            }
+                        }
+                    }
+                    if (f.is_open()) {
+                        nlohmann::json j;
+                        f >> j;
+                        if (j.contains("videos") && j["videos"].is_array()) {
+                            max_videos = j["videos"].size();
+                        }
+                    }
+                    
+                    if (video_idx >= 0 && video_idx < max_videos) {
+                        push_video_trigger(video_idx);
+                        response_body = "{\"status\":\"ok\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 200 OK\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    } else {
+                        response_body = "{\"error\":\"Video index out of bounds\"}";
+                        std::stringstream header;
+                        header << "HTTP/1.1 400 Bad Request\r\n"
+                               << "Content-Type: application/json\r\n"
+                               << "Content-Length: " << response_body.length() << "\r\n"
+                               << "Connection: close\r\n\r\n";
+                        response_headers = header.str();
+                    }
+                } else {
+                    response_body = "{\"error\":\"Missing or invalid video_index field\"}";
+                    std::stringstream header;
+                    header << "HTTP/1.1 400 Bad Request\r\n"
+                           << "Content-Type: application/json\r\n"
+                           << "Content-Length: " << response_body.length() << "\r\n"
+                           << "Connection: close\r\n\r\n";
+                    response_headers = header.str();
+                }
+            } catch (const std::exception& e) {
+                response_body = std::string("{\"error\":\"") + e.what() + "\"}";
                 std::stringstream header;
                 header << "HTTP/1.1 400 Bad Request\r\n"
                        << "Content-Type: application/json\r\n"

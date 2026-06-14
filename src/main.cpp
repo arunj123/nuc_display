@@ -189,7 +189,16 @@ int main(int argc, char** argv) {
     std::vector<std::unique_ptr<modules::VideoDecoder>> video_decoders;
     std::vector<bool> video_started; // Track if key-triggered videos have been started
     for (const auto& v_config : app_config.videos) {
-        if (!v_config.enabled) continue;
+        if (!v_config.enabled || v_config.playlists.empty()) {
+            video_decoders.push_back(nullptr);
+            video_started.push_back(false);
+            if (!v_config.enabled) {
+                std::cout << "[Core] Video region index " << (video_decoders.size() - 1) << " is disabled.\n";
+            } else {
+                std::cerr << "[Core] No videos defined for a configured video region " << (video_decoders.size() - 1) << ".\n";
+            }
+            continue;
+        }
         
         auto decoder = std::make_unique<modules::VideoDecoder>();
         if (display) {
@@ -204,21 +213,16 @@ int main(int argc, char** argv) {
             decoder->init_audio(v_config.audio_device);
         }
         
-        if (!v_config.playlists.empty()) {
-            // Only auto-start if start_trigger is "auto" (key == 0)
-            if (v_config.start_trigger_key == 0) {
-                decoder->load_playlist(v_config.playlists);
-                video_started.push_back(true);
-            } else {
-                std::cout << "[Core] Video region waiting for key '" 
-                          << v_config.start_trigger_name << "' to start.\n";
-                video_started.push_back(false);
-            }
-            video_decoders.push_back(std::move(decoder));
+        // Only auto-start if start_trigger is "auto" (key == 0)
+        if (v_config.start_trigger_key == 0) {
+            decoder->load_playlist(v_config.playlists);
+            video_started.push_back(true);
         } else {
-            std::cerr << "[Core] No videos defined for a configured video region.\n";
+            std::cout << "[Core] Video region index " << (video_decoders.size()) << " waiting for key '" 
+                      << v_config.start_trigger_name << "' to start.\n";
             video_started.push_back(false);
         }
+        video_decoders.push_back(std::move(decoder));
     }
 
     // Camera Modules (V4L2) - Multi-instance support with hot-plug
@@ -364,7 +368,11 @@ int main(int argc, char** argv) {
                 
                 // Re-initialize video decoders
                 for (const auto& v_config : app_config.videos) {
-                    if (!v_config.enabled) continue;
+                    if (!v_config.enabled || v_config.playlists.empty()) {
+                        video_decoders.push_back(nullptr);
+                        video_started.push_back(false);
+                        continue;
+                    }
                     
                     auto decoder = std::make_unique<modules::VideoDecoder>();
                     if (display) {
@@ -379,17 +387,13 @@ int main(int argc, char** argv) {
                         decoder->init_audio(v_config.audio_device);
                     }
                     
-                    if (!v_config.playlists.empty()) {
-                        if (v_config.start_trigger_key == 0) {
-                            decoder->load_playlist(v_config.playlists);
-                            video_started.push_back(true);
-                        } else {
-                            video_started.push_back(false);
-                        }
-                        video_decoders.push_back(std::move(decoder));
+                    if (v_config.start_trigger_key == 0) {
+                        decoder->load_playlist(v_config.playlists);
+                        video_started.push_back(true);
                     } else {
                         video_started.push_back(false);
                     }
+                    video_decoders.push_back(std::move(decoder));
                 }
                 video_process_tasks.resize(video_decoders.size());
                 
@@ -441,7 +445,9 @@ int main(int argc, char** argv) {
                     display->set_power_save(true);
                 }
                 for (auto& decoder : video_decoders) {
-                    decoder->set_paused(true, render_time_sec);
+                    if (decoder) {
+                        decoder->set_paused(true, render_time_sec);
+                    }
                 }
                 screen_blanked = true;
             }
@@ -455,7 +461,9 @@ int main(int argc, char** argv) {
                     display->set_power_save(false);
                 }
                 for (auto& decoder : video_decoders) {
-                    decoder->set_paused(videos_hidden, render_time_sec);
+                    if (decoder) {
+                        decoder->set_paused(videos_hidden, render_time_sec);
+                    }
                 }
                 screen_blanked = false;
             }
@@ -471,13 +479,16 @@ int main(int argc, char** argv) {
                 videos_hidden = !videos_hidden;
                 std::cout << "[Core] Videos " << (videos_hidden ? "HIDDEN" : "SHOWN") << "\n";
                 for (auto& decoder : video_decoders) {
-                    decoder->set_paused(videos_hidden, render_time_sec);
+                    if (decoder) {
+                        decoder->set_paused(videos_hidden, render_time_sec);
+                    }
                 }
             }
 
             // Per-video key handling
             for (size_t i = 0; i < video_decoders.size(); ++i) {
                 auto& decoder = video_decoders[i];
+                if (!decoder) continue;
                 auto& v_config = app_config.videos[i];
 
                 // Start trigger (Toggle)
@@ -522,8 +533,27 @@ int main(int argc, char** argv) {
             if (app_config.stock_keys.next_chart && code == *app_config.stock_keys.next_chart) {
                 stock_module->next_chart();
             }
-            if (app_config.stock_keys.prev_chart && code == *app_config.stock_keys.prev_chart) {
-                stock_module->prev_chart();
+        }
+
+        // --- POLL HTTP VIDEO TRIGGERS ---
+        if (http_server) {
+            while (auto opt_idx = http_server->pop_video_trigger()) {
+                int i = *opt_idx;
+                if (i >= 0 && i < (int)video_decoders.size()) {
+                    auto& decoder = video_decoders[i];
+                    if (decoder) {
+                        auto& v_config = app_config.videos[i];
+                        if (!video_started[i]) {
+                            std::cout << "[Core] Web trigger: Starting video " << i << "\n";
+                            decoder->load_playlist(v_config.playlists);
+                            video_started[i] = true;
+                        } else {
+                            std::cout << "[Core] Web trigger: Unloading video " << i << "\n";
+                            decoder->unload();
+                            video_started[i] = false;
+                        }
+                    }
+                }
             }
         }
         
@@ -691,6 +721,7 @@ int main(int argc, char** argv) {
                     if (vi < 0 || vi >= (int)video_decoders.size()) break;
 
                     auto& decoder = video_decoders[vi];
+                    if (!decoder) break;
                     auto& v_config = app_config.videos[vi];
                     auto& task = video_process_tasks[vi];
 

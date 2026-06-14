@@ -661,6 +661,42 @@ TEST(HttpServerModuleTest, MediaManagementAPI) {
     server.stop();
 }
 
+TEST(HttpServerModuleTest, VideoTriggerAPI) {
+    InputModule input;
+    std::atomic<bool> reload_flag{false};
+    
+    HttpServerModule server(&input, "config.json", reload_flag, 9992);
+    server.start();
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    // Test 1: Successful video trigger index
+    long code = 0;
+    nlohmann::json trigger_body;
+    trigger_body["video_index"] = 0;
+    std::string res = socket_http_request("POST", 9992, "/api/video/trigger", trigger_body.dump(), {"Content-Type: application/json"}, &code);
+    EXPECT_EQ(code, 200);
+    nlohmann::json trigger_res = nlohmann::json::parse(res);
+    EXPECT_EQ(trigger_res["status"], "ok");
+    
+    // Check pop_video_trigger returns 0
+    auto pop_res = server.pop_video_trigger();
+    ASSERT_TRUE(pop_res.has_value());
+    EXPECT_EQ(pop_res.value(), 0);
+    
+    // Check subsequent pop returns empty
+    EXPECT_FALSE(server.pop_video_trigger().has_value());
+
+    // Test 2: Trigger out-of-bounds video index
+    trigger_body["video_index"] = 999;
+    res = socket_http_request("POST", 9992, "/api/video/trigger", trigger_body.dump(), {"Content-Type: application/json"}, &code);
+    EXPECT_EQ(code, 400);
+    nlohmann::json err_res = nlohmann::json::parse(res);
+    EXPECT_TRUE(err_res.contains("error"));
+    
+    server.stop();
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

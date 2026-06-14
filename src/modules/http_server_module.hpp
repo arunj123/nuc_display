@@ -5,6 +5,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <optional>
 
 namespace nuc_display::modules {
 
@@ -30,6 +31,9 @@ public:
     bool has_qr_code_updates() const { return qr_code_updated_.load(); }
     QrCodeImage get_qr_code_image(); // Clears update flag
 
+    std::optional<int> pop_video_trigger();
+    void push_video_trigger(int index);
+
 private:
     void listen_loop();
     void generate_qr_code(const std::string& text);
@@ -50,6 +54,9 @@ private:
     std::mutex qr_mutex_;
     mutable std::mutex ip_mutex_;
     QrCodeImage qr_image_;
+
+    std::mutex trigger_mutex_;
+    std::vector<int> pending_triggers_;
 };
 
 } // namespace nuc_display::modules
