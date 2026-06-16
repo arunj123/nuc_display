@@ -2264,8 +2264,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         <span>Range: 0.0 - 1.0</span>
                     </div>
                     <div class="slider-row">
-                        <input type="range" min="0" max="1" step="0.01" value="${obj[c] || 0}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
-                        <span id="${type}-${idx}-val-${c}">${(obj[c] || 0).toFixed(2)}</span>
+                        <input type="range" id="${type}-${idx}-slider-${c}" min="0" max="1" step="0.01" value="${(obj[c] !== undefined && obj[c] !== null) ? obj[c] : 0}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
+                        <span id="${type}-${idx}-val-${c}">${((obj[c] !== undefined && obj[c] !== null) ? Number(obj[c]) : 0.0).toFixed(2)}</span>
                     </div>
                 </div>
             `).join('');
@@ -2278,8 +2278,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         <span style="text-transform:uppercase; font-weight:700;">Crop ${c.replace('src_', '')}</span>
                     </div>
                     <div class="slider-row">
-                        <input type="range" min="0" max="1" step="0.01" value="${obj[c] !== undefined ? obj[c] : 1}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
-                        <span id="${type}-${idx}-val-${c}">${(obj[c] !== undefined ? obj[c] : 1).toFixed(2)}</span>
+                        <input type="range" id="${type}-${idx}-slider-${c}" min="0" max="1" step="0.01" value="${(obj[c] !== undefined && obj[c] !== null) ? obj[c] : 1}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
+                        <span id="${type}-${idx}-val-${c}">${((obj[c] !== undefined && obj[c] !== null) ? Number(obj[c]) : 1.0).toFixed(2)}</span>
                     </div>
                 </div>
             `).join('');
@@ -2884,13 +2884,24 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 // Ignore layout moves if clicking inner-crop-box or crop-resize-handle
                 if (e.target.closest('.inner-crop-box')) return;
                 
+                e.preventDefault(); // Prevent text selection and browser default drag
+                
                 selectedLayer = { type: layer.type, index: layer.type === 'video' ? layer.video_index : layer.camera_index };
+                
+                // Switch tabs/accordions on selection
+                if (layer.type === 'video') {
+                    switchTab('tab-videos');
+                    const acc = document.getElementById(`video-accordion-${layer.video_index}`);
+                    if (acc) acc.classList.add('open');
+                } else if (layer.type === 'camera') {
+                    switchTab('tab-cameras');
+                }
                 
                 const wasSelected = isSelected;
                 if (!wasSelected) {
                     document.querySelectorAll('.mockup-layer').forEach(l => l.classList.remove('selected'));
-                    document.querySelectorAll('.resize-handle').forEach(h => h.remove());
-                    document.querySelectorAll('.inner-crop-box').forEach(b => b.remove());
+                    document.querySelectorAll('.mockup-layer .resize-handle').forEach(h => h.remove());
+                    document.querySelectorAll('.mockup-layer .inner-crop-box').forEach(b => b.remove());
                     
                     div.classList.add('selected');
                     if (interactionMode === 'layout') {
@@ -2898,8 +2909,21 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         handle.className = 'resize-handle';
                         div.appendChild(handle);
                     }
-                    updateLayoutPreview();
-                    return;
+                    
+                    // Show interaction mode selector
+                    const interactionSel = document.getElementById('interactionModeSelector');
+                    if (interactionSel) interactionSel.style.display = 'flex';
+                    const btnLayout = document.getElementById('modeBtnLayout');
+                    const btnCrop = document.getElementById('modeBtnCrop');
+                    if (btnLayout && btnCrop) {
+                        if (interactionMode === 'layout') {
+                            btnLayout.className = 'btn btn-small';
+                            btnCrop.className = 'btn btn-secondary btn-small';
+                        } else {
+                            btnLayout.className = 'btn btn-secondary btn-small';
+                            btnCrop.className = 'btn btn-small';
+                        }
+                    }
                 }
                 
                 let isResizing = (e.target.classList.contains('resize-handle'));
@@ -3004,14 +3028,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     document.removeEventListener('mousemove', onMouseMove);
                     document.removeEventListener('mouseup', onMouseUp);
                     
-                    if (moved) {
-                        upEv.preventDefault();
-                        div.addEventListener('click', function captureClick(clickEv) {
-                            clickEv.stopPropagation();
-                            clickEv.preventDefault();
-                            div.removeEventListener('click', captureClick, true);
-                        }, true);
-                    }
+                    // Always trigger a full layout preview update on mouseup to sync everything cleanly
+                    updateLayoutPreview();
                 };
                 
                 document.addEventListener('mousemove', onMouseMove);
@@ -3179,13 +3197,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             const item = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
             const typeStr = type === 'video' ? 'videos' : 'cameras';
             ['x', 'y', 'w', 'h'].forEach(c => {
-                const slider = document.querySelector(`input[oninput*="updateCoordSlider('${typeStr}', ${idx}, '${c}'"]`);
+                const slider = document.getElementById(`${typeStr}-${idx}-slider-${c}`);
+                const hasVal = (item[c] !== undefined && item[c] !== null);
+                const defaultVal = 0.0;
                 if (slider) {
-                    slider.value = item[c];
+                    slider.value = hasVal ? item[c] : defaultVal;
                 }
                 const label = document.getElementById(`${typeStr}-${idx}-val-${c}`);
                 if (label) {
-                    label.textContent = item[c].toFixed(2);
+                    label.textContent = (hasVal ? Number(item[c]) : defaultVal).toFixed(2);
                 }
             });
         }
@@ -3194,13 +3214,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             const item = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
             const typeStr = type === 'video' ? 'videos' : 'cameras';
             ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
-                const slider = document.querySelector(`input[oninput*="updateCoordSlider('${typeStr}', ${idx}, '${c}'"]`);
+                const slider = document.getElementById(`${typeStr}-${idx}-slider-${c}`);
+                const hasVal = (item[c] !== undefined && item[c] !== null);
+                const defaultVal = (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0);
                 if (slider) {
-                    slider.value = item[c] !== undefined ? item[c] : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0);
+                    slider.value = hasVal ? item[c] : defaultVal;
                 }
                 const label = document.getElementById(`${typeStr}-${idx}-val-${c}`);
                 if (label) {
-                    label.textContent = (item[c] !== undefined ? item[c] : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0)).toFixed(2);
+                    label.textContent = (hasVal ? Number(item[c]) : defaultVal).toFixed(2);
                 }
             });
         }
@@ -3365,10 +3387,15 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             activeCropTarget = { type, index: idx };
             const item = fullConfig[type][idx];
             
-            currentCropCoords.x = item.src_x !== undefined ? item.src_x : 0;
-            currentCropCoords.y = item.src_y !== undefined ? item.src_y : 0;
-            currentCropCoords.w = item.src_w !== undefined ? item.src_w : 1;
-            currentCropCoords.h = item.src_h !== undefined ? item.src_h : 1;
+            const itemX = (item.src_x !== undefined && item.src_x !== null) ? Number(item.src_x) : 0.0;
+            const itemY = (item.src_y !== undefined && item.src_y !== null) ? Number(item.src_y) : 0.0;
+            const itemW = (item.src_w !== undefined && item.src_w !== null) ? Number(item.src_w) : 1.0;
+            const itemH = (item.src_h !== undefined && item.src_h !== null) ? Number(item.src_h) : 1.0;
+            
+            currentCropCoords.x = itemX;
+            currentCropCoords.y = itemY;
+            currentCropCoords.w = itemW;
+            currentCropCoords.h = itemH;
             
             const titleEl = document.getElementById('cropModalTitle');
             if (titleEl) {
@@ -3482,13 +3509,13 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 
                 // Sync to sliders
                 ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
-                    const slider = document.querySelector(`input[oninput*="updateCoordSlider('${type}', ${index}, '${c}'"]`);
+                    const slider = document.getElementById(`${type}-${index}-slider-${c}`);
                     if (slider) {
                         slider.value = item[c];
                     }
                     const label = document.getElementById(`${type}-${index}-val-${c}`);
                     if (label) {
-                        label.textContent = item[c].toFixed(2);
+                        label.textContent = ((item[c] !== undefined && item[c] !== null) ? Number(item[c]) : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0)).toFixed(2);
                     }
                 });
                 
@@ -3959,8 +3986,10 @@ void HttpServerModule::listen_loop() {
                     filename = decoded;
                     
                     std::string file_path = filename;
-                    if (file_path.rfind("assets/media/", 0) == std::string::npos) {
-                        file_path = "assets/media/" + std::filesystem::path(file_path).filename().string();
+                    if (!std::filesystem::exists(file_path)) {
+                        if (file_path.rfind("assets/media/", 0) == std::string::npos) {
+                            file_path = "assets/media/" + std::filesystem::path(file_path).filename().string();
+                        }
                     }
                     
                     ContainerReader reader;
