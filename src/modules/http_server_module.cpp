@@ -1103,12 +1103,25 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Drag and resize the cropping boundary box over the 16:9 source aspect frame.</p>
             
             <div id="cropWorkspace" style="width: 100%; aspect-ratio: 16 / 9; background: #06050e; border: 2px solid #231d42; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 1.5rem;">
-                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.15; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; letter-spacing: 2px; color: white;">
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.15; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; letter-spacing: 2px; color: white; z-index: 0;">
                     SOURCE MEDIA FRAME
                 </div>
-                <div id="cropBox" style="position: absolute; border: 2px dashed var(--accent-secondary); background: rgba(0, 242, 254, 0.08); box-shadow: 0 0 15px rgba(0, 242, 254, 0.2); cursor: move;">
+                <video id="cropVideoPreview" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: 1; display: none; pointer-events: none;" muted loop playsinline></video>
+                <div id="cropBox" style="position: absolute; border: 2px dashed var(--accent-secondary); background: rgba(0, 242, 254, 0.08); box-shadow: 0 0 15px rgba(0, 242, 254, 0.2); cursor: move; z-index: 2;">
                     <div id="cropBoxLabel" style="position: absolute; top: 4px; left: 6px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 2px 4px; border-radius: 3px; color: var(--accent-secondary); pointer-events: none;">Crop Region</div>
                     <div class="resize-handle" id="cropResizeHandle"></div>
+                </div>
+            </div>
+            
+            <!-- Seek Timeline Control -->
+            <div id="cropTimelineContainer" style="display: none; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                    <span>Seekable Video Preview</span>
+                    <span id="cropTimeDisplay">0:00 / 0:00</span>
+                </div>
+                <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <button class="btn btn-secondary btn-small" id="cropPlayBtn" type="button" style="padding: 0.25rem 0.5rem; min-width: 65px;">Play</button>
+                    <input type="range" id="cropTimeline" min="0" max="100" value="0" style="flex: 1; cursor: pointer; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1);">
                 </div>
             </div>
             
@@ -3407,6 +3420,85 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 modal.style.display = 'flex';
             }
             
+            // Resolve preview video path
+            let previewPath = '';
+            if (type === 'videos') {
+                const playlist = item.playlists || [];
+                for (const path of playlist) {
+                    if (path && path.trim() !== '') {
+                        previewPath = path;
+                        break;
+                    }
+                }
+            } else if (type === 'cameras') {
+                // Find first video file path configured in any video player
+                if (fullConfig.videos) {
+                    for (const v of fullConfig.videos) {
+                        const playlist = v.playlists || [];
+                        for (const path of playlist) {
+                            if (path && path.trim() !== '') {
+                                previewPath = path;
+                                break;
+                            }
+                        }
+                        if (previewPath) break;
+                    }
+                }
+                // Fallback to sample video files if none configured
+                if (!previewPath) {
+                    previewPath = 'tests/sample_no_audio.mp4';
+                }
+            }
+            
+            const video = document.getElementById('cropVideoPreview');
+            const timelineContainer = document.getElementById('cropTimelineContainer');
+            if (video && previewPath) {
+                video.src = `/api/media/download?file=${encodeURIComponent(previewPath)}`;
+                video.style.display = 'block';
+                video.load();
+                
+                const timeline = document.getElementById('cropTimeline');
+                const timeDisplay = document.getElementById('cropTimeDisplay');
+                const playBtn = document.getElementById('cropPlayBtn');
+                
+                function formatTime(secs) {
+                    if (isNaN(secs) || !isFinite(secs)) return '0:00';
+                    const m = Math.floor(secs / 60);
+                    const s = Math.floor(secs % 60).toString().padStart(2, '0');
+                    return `${m}:${s}`;
+                }
+                
+                video.onloadedmetadata = () => {
+                    timeline.max = video.duration;
+                    timeline.value = 0;
+                    timeDisplay.textContent = `0:00 / ${formatTime(video.duration)}`;
+                    timelineContainer.style.display = 'flex';
+                };
+                
+                video.ontimeupdate = () => {
+                    timeline.value = video.currentTime;
+                    timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+                };
+                
+                timeline.oninput = () => {
+                    video.currentTime = timeline.value;
+                };
+                
+                playBtn.onclick = () => {
+                    if (video.paused) {
+                        video.play().catch(() => {});
+                        playBtn.textContent = 'Pause';
+                    } else {
+                        video.pause();
+                        playBtn.textContent = 'Play';
+                    }
+                };
+                playBtn.textContent = 'Play';
+            } else {
+                if (video) video.style.display = 'none';
+                if (timelineContainer) timelineContainer.style.display = 'none';
+            }
+            
             updateCropBoxVisuals();
             initCropBoxInteractions();
         }
@@ -3499,6 +3591,20 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
         
         function closeCropEditor(apply) {
+            // Stop and release video preview
+            const video = document.getElementById('cropVideoPreview');
+            const timelineContainer = document.getElementById('cropTimelineContainer');
+            if (video) {
+                video.pause();
+                video.src = '';
+                video.onloadedmetadata = null;
+                video.ontimeupdate = null;
+                video.load();
+            }
+            if (timelineContainer) {
+                timelineContainer.style.display = 'none';
+            }
+            
             if (apply && activeCropTarget) {
                 const { type, index } = activeCropTarget;
                 const item = fullConfig[type][index];
@@ -4057,8 +4163,12 @@ void HttpServerModule::listen_loop() {
                         }
                     }
                     filename = decoded;
-                    filename = std::filesystem::path(filename).filename().string();
-                    std::string file_path = "assets/media/" + filename;
+                    
+                    std::string file_path = filename;
+                    if (!std::filesystem::exists(file_path)) {
+                        filename = std::filesystem::path(filename).filename().string();
+                        file_path = "assets/media/" + filename;
+                    }
                     
                     std::ifstream f(file_path, std::ios::binary);
                     if (f.is_open()) {
