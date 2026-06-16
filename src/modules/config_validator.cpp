@@ -60,10 +60,21 @@ std::vector<std::string> ConfigValidator::validate(const AppConfig& config) {
         check_range(v.y, "y");
         check_range(v.w, "w");
         check_range(v.h, "h");
-        check_range(v.src_x, "src_x");
-        check_range(v.src_y, "src_y");
-        check_range(v.src_w, "src_w");
-        check_range(v.src_h, "src_h");
+
+        // Validate each item in the playlists
+        for (size_t p_idx = 0; p_idx < v.playlists.size(); ++p_idx) {
+            const auto& p = v.playlists[p_idx];
+            std::string p_ctx = ctx + ".playlists[" + std::to_string(p_idx) + "]";
+            auto check_p_range = [&](float val, const std::string& name) {
+                if (val < 0.0f || val > 1.0f) {
+                    errors.push_back(p_ctx + "." + name + " out of range [0.0, 1.0]: " + std::to_string(val));
+                }
+            };
+            check_p_range(p.src_x, "src_x");
+            check_p_range(p.src_y, "src_y");
+            check_p_range(p.src_w, "src_w");
+            check_p_range(p.src_h, "src_h");
+        }
 
         // Start trigger key uniqueness
         if (v.start_trigger_key > 0) {

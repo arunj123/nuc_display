@@ -41,13 +41,27 @@ struct VideoKeysConfig {
     std::optional<uint16_t> skip_backward;
 };
 
+struct PlaylistItemConfig {
+    std::string path;
+    float src_x = 0.0f;
+    float src_y = 0.0f;
+    float src_w = 1.0f;
+    float src_h = 1.0f;
+
+    PlaylistItemConfig() = default;
+    PlaylistItemConfig(const std::string& p) : path(p) {}
+    PlaylistItemConfig(const char* p) : path(p) {}
+
+    bool operator==(const std::string& other) const { return path == other; }
+    bool operator==(const char* other) const { return path == other; }
+};
+
 struct VideoConfig {
     bool enabled = true;
     bool audio_enabled = false;
     std::string audio_device = "default";
-    std::vector<std::string> playlists;
+    std::vector<PlaylistItemConfig> playlists;
     float x = 0.0f, y = 0.0f, w = 1.0f, h = 1.0f;
-    float src_x = 0.0f, src_y = 0.0f, src_w = 1.0f, src_h = 1.0f;
 
     // Key-driven start trigger: 0 = auto, >0 = key code
     uint16_t start_trigger_key = 0;

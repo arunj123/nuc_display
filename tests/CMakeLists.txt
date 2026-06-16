@@ -109,4 +109,5 @@ add_test(NAME VideoDecoderTests COMMAND test_video_decoder)
 add_executable(test_integration test_integration.cpp)
 target_include_directories(test_integration PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(test_integration PRIVATE cxx_std_23)
+target_link_libraries(test_integration PRIVATE nlohmann_json::nlohmann_json)
 # Not added to CTest — run manually on NUC: sudo ./test_integration

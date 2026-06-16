@@ -1,4 +1,5 @@
 #include "modules/video_decoder.hpp"
+#include "modules/config_module.hpp"
 #include <iostream>
 #include <drm_fourcc.h>
 
@@ -134,6 +135,16 @@ void VideoDecoder::load_playlist(const std::vector<std::string>& files) {
     this->playlist_ = files;
     this->playlist_index_ = 0;
     this->load(this->playlist_[this->playlist_index_]);
+}
+
+void VideoDecoder::load_playlist(const std::vector<PlaylistItemConfig>& playlist) {
+    if (playlist.empty()) return;
+    std::vector<std::string> files;
+    files.reserve(playlist.size());
+    for (const auto& item : playlist) {
+        files.push_back(item.path);
+    }
+    this->load_playlist(files);
 }
 
 void VideoDecoder::next_video() {

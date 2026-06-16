@@ -7,6 +7,32 @@
 
 namespace nuc_display::modules {
 
+void to_json(nlohmann::json& j, const PlaylistItemConfig& p) {
+    j = nlohmann::json{
+        {"path", p.path},
+        {"src_x", p.src_x},
+        {"src_y", p.src_y},
+        {"src_w", p.src_w},
+        {"src_h", p.src_h}
+    };
+}
+
+void from_json(const nlohmann::json& j, PlaylistItemConfig& p) {
+    if (j.is_string()) {
+        p.path = j.get<std::string>();
+        p.src_x = 0.0f;
+        p.src_y = 0.0f;
+        p.src_w = 1.0f;
+        p.src_h = 1.0f;
+    } else if (j.is_object()) {
+        p.path = j.value("path", "");
+        p.src_x = j.value("src_x", 0.0f);
+        p.src_y = j.value("src_y", 0.0f);
+        p.src_w = j.value("src_w", 1.0f);
+        p.src_h = j.value("src_h", 1.0f);
+    }
+}
+
 // --- Key Name <-> Code Mapping ---
 
 static const std::unordered_map<std::string, uint16_t>& get_key_map() {
@@ -181,10 +207,6 @@ void ConfigModule::save_config(const AppConfig& config, const std::string& filep
         vj["y"] = v.y;
         vj["w"] = v.w;
         vj["h"] = v.h;
-        vj["src_x"] = v.src_x;
-        vj["src_y"] = v.src_y;
-        vj["src_w"] = v.src_w;
-        vj["src_h"] = v.src_h;
         vj["start_trigger"] = v.start_trigger_name;
 
         nlohmann::json keys_j;
@@ -281,7 +303,6 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
         v.audio_device = "default";
         v.playlists = {"tests/sample.mp4"};
         v.x = 0.70f; v.y = 0.03f; v.w = 0.25f; v.h = 0.20f;
-        v.src_x = 0.0f; v.src_y = 0.0f; v.src_w = 1.0f; v.src_h = 1.0f;
         config.videos.push_back(v);
 
         // Default global key: 'v' to hide/show videos
@@ -411,7 +432,8 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 
                 if (video_json.contains("playlists") && video_json["playlists"].is_array()) {
                     for (const auto& item : video_json["playlists"]) {
-                        if (item.is_string()) v.playlists.push_back(item);
+                        PlaylistItemConfig p = item;
+                        v.playlists.push_back(p);
                     }
                 }
                 
@@ -419,10 +441,6 @@ std::expected<AppConfig, ConfigError> ConfigModule::load_or_create_config(const 
                 v.y = video_json.value("y", 0.0f);
                 v.w = video_json.value("w", 1.0f);
                 v.h = video_json.value("h", 1.0f);
-                v.src_x = video_json.value("src_x", 0.0f);
-                v.src_y = video_json.value("src_y", 0.0f);
-                v.src_w = video_json.value("src_w", 1.0f);
-                v.src_h = video_json.value("src_h", 1.0f);
 
                 // Start trigger
                 v.start_trigger_name = video_json.value("start_trigger", "auto");

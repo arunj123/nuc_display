@@ -1715,7 +1715,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 cfg.videos.forEach(v => {
                     delete v.lock_aspect;
                     if (v.playlists) {
-                        v.playlists = v.playlists.filter(p => p.trim() !== '');
+                        v.playlists = v.playlists.filter(p => (typeof p === 'string' ? p : (p.path || '')).trim() !== '');
                     }
                 });
             }
@@ -1819,7 +1819,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         async function resizeToVideoSize(vIdx, pIdx) {
-            const path = fullConfig.videos[vIdx].playlists[pIdx];
+            const pathObj = fullConfig.videos[vIdx].playlists[pIdx];
+            const path = (pathObj && typeof pathObj === 'object') ? pathObj.path : pathObj;
             if (!path || path.trim() === '') {
                 showToast('Validation Alert', 'Please enter or select a video path first.', 'error');
                 return;
@@ -1849,10 +1850,12 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 if (video.x + video.w > 1.0) video.x = parseFloat((1.0 - video.w).toFixed(2));
                 if (video.y + video.h > 1.0) video.y = parseFloat((1.0 - video.h).toFixed(2));
                 
-                video.src_x = 0.0;
-                video.src_y = 0.0;
-                video.src_w = 1.0;
-                video.src_h = 1.0;
+                if (pathObj && typeof pathObj === 'object') {
+                    pathObj.src_x = 0.0;
+                    pathObj.src_y = 0.0;
+                    pathObj.src_w = 1.0;
+                    pathObj.src_h = 1.0;
+                }
 
                 renderVideosAccordion();
                 updateLayoutPreview();
@@ -1876,7 +1879,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 showToast('Validation Alert', 'Cannot trigger: Video region is disabled.', 'error');
                 return;
             }
-            const cleanPlaylists = (video.playlists || []).filter(p => p.trim() !== '');
+            const cleanPlaylists = (video.playlists || []).filter(p => {
+                const pathStr = (p && typeof p === 'object') ? p.path : p;
+                return pathStr && pathStr.trim() !== '';
+            });
             if (cleanPlaylists.length === 0) {
                 showToast('Validation Alert', 'Cannot play: Playlist has no entries.', 'error');
                 return;
@@ -2002,6 +2008,29 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 populateKeySelectors();
                 const res = await fetch('/api/config');
                 fullConfig = await res.json();
+                
+                if (fullConfig.videos) {
+                    fullConfig.videos.forEach(v => {
+                        if (v.playlists) {
+                            v.playlists = v.playlists.map(p => {
+                                if (typeof p === 'string') {
+                                    return { path: p, src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0 };
+                                } else if (p && typeof p === 'object') {
+                                    return {
+                                        path: p.path || '',
+                                        src_x: p.src_x !== undefined ? p.src_x : 0.0,
+                                        src_y: p.src_y !== undefined ? p.src_y : 0.0,
+                                        src_w: p.src_w !== undefined ? p.src_w : 1.0,
+                                        src_h: p.src_h !== undefined ? p.src_h : 1.0
+                                    };
+                                }
+                                return { path: '', src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0 };
+                            });
+                        } else {
+                            v.playlists = [];
+                        }
+                    });
+                }
                 
                 populateFormFields();
                 updateLayoutPreview();
@@ -2153,14 +2182,18 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                     el.className = 'accordion-item';
                     el.id = `video-accordion-${index}`;
                     
-                    const pathsListHTML = (v.playlists || []).map((path, pIdx) => `
-                        <div class="list-item" style="margin-bottom:0.4rem;">
-                            <input type="text" placeholder="e.g. tests/sample.mp4" value="${path}" oninput="updateVideoPlaylistPath(${index}, ${pIdx}, this.value)" style="flex:1;">
-                            <button class="btn btn-secondary btn-small" onclick="openBrowseModal(${index}, ${pIdx})">Browse</button>
-                            <button class="btn btn-secondary btn-small" onclick="resizeToVideoSize(${index}, ${pIdx})">Match Size</button>
-                            <button class="btn btn-danger btn-small" onclick="deleteVideoPlaylistPath(${index}, ${pIdx})">&times;</button>
-                        </div>
-                    `).join('');
+                    const pathsListHTML = (v.playlists || []).map((pObj, pIdx) => {
+                        const pathStr = typeof pObj === 'string' ? pObj : (pObj.path || '');
+                        return `
+                            <div class="list-item" style="margin-bottom:0.4rem;">
+                                <input type="text" placeholder="e.g. tests/sample.mp4" value="${pathStr}" oninput="updateVideoPlaylistPath(${index}, ${pIdx}, this.value)" style="flex:1;">
+                                <button class="btn btn-secondary btn-small" onclick="openBrowseModal(${index}, ${pIdx})">Browse</button>
+                                <button class="btn btn-secondary btn-small" onclick="openCropEditor('videos', ${index}, ${pIdx})">Crop</button>
+                                <button class="btn btn-secondary btn-small" onclick="resizeToVideoSize(${index}, ${pIdx})">Match Size</button>
+                                <button class="btn btn-danger btn-small" onclick="deleteVideoPlaylistPath(${index}, ${pIdx})">&times;</button>
+                            </div>
+                        `;
+                    }).join('');
 
                     // Build dropdown selections for video keys
                     const keysSelectsHTML = ['next', 'prev', 'skip_forward', 'skip_backward'].map(k => {
@@ -2285,17 +2318,21 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         function renderCropCoordSliders(idx, type, obj) {
-            return ['src_x', 'src_y', 'src_w', 'src_h'].map(c => `
-                <div class="slider-control-group">
-                    <div class="slider-header">
-                        <span style="text-transform:uppercase; font-weight:700;">Crop ${c.replace('src_', '')}</span>
+            const cropSrc = (type === 'videos' && obj.playlists && obj.playlists.length > 0) ? obj.playlists[0] : obj;
+            return ['src_x', 'src_y', 'src_w', 'src_h'].map(c => {
+                const val = (cropSrc[c] !== undefined && cropSrc[c] !== null) ? cropSrc[c] : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0);
+                return `
+                    <div class="slider-control-group">
+                        <div class="slider-header">
+                            <span style="text-transform:uppercase; font-weight:700;">Crop ${c.replace('src_', '')}</span>
+                        </div>
+                        <div class="slider-row">
+                            <input type="range" id="${type}-${idx}-slider-${c}" min="0" max="1" step="0.01" value="${val}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
+                            <span id="${type}-${idx}-val-${c}">${Number(val).toFixed(2)}</span>
+                        </div>
                     </div>
-                    <div class="slider-row">
-                        <input type="range" id="${type}-${idx}-slider-${c}" min="0" max="1" step="0.01" value="${(obj[c] !== undefined && obj[c] !== null) ? obj[c] : 1}" oninput="updateCoordSlider('${type}', ${idx}, '${c}', parseFloat(this.value))">
-                        <span id="${type}-${idx}-val-${c}">${((obj[c] !== undefined && obj[c] !== null) ? Number(obj[c]) : 1.0).toFixed(2)}</span>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function updateVideoBool(idx, field, checked) {
@@ -2331,18 +2368,32 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         function updateCoordSlider(type, idx, coord, val) {
-            fullConfig[type][idx][coord] = val;
+            if (type === 'videos' && coord.startsWith('src_')) {
+                const video = fullConfig.videos[idx];
+                if (video.playlists && video.playlists.length > 0) {
+                    video.playlists[0][coord] = val;
+                }
+            } else {
+                fullConfig[type][idx][coord] = val;
+            }
             document.getElementById(`${type}-${idx}-val-${coord}`).textContent = val.toFixed(2);
             updateLayoutPreview();
         }
 
         function updateVideoPlaylistPath(vIdx, pIdx, val) {
-            fullConfig.videos[vIdx].playlists[pIdx] = val;
+            const playlist = fullConfig.videos[vIdx].playlists;
+            if (typeof playlist[pIdx] === 'string') {
+                playlist[pIdx] = { path: val, src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0 };
+            } else if (playlist[pIdx] && typeof playlist[pIdx] === 'object') {
+                playlist[pIdx].path = val;
+            } else {
+                playlist[pIdx] = { path: val, src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0 };
+            }
         }
 
         function addVideoPlaylistPath(vIdx) {
             if (!fullConfig.videos[vIdx].playlists) fullConfig.videos[vIdx].playlists = [];
-            fullConfig.videos[vIdx].playlists.push('');
+            fullConfig.videos[vIdx].playlists.push({ path: '', src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0 });
             renderVideosAccordion();
             // keep the accordion open
             document.getElementById(`video-accordion-${vIdx}`).classList.add('open');
@@ -2362,7 +2413,6 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 audio_device: 'default',
                 playlists: [],
                 x: 0.0, y: 0.0, w: 0.5, h: 0.5,
-                src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
                 start_trigger: 'auto',
                 keys: {}
             });
@@ -2666,13 +2716,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                 handle.className = 'resize-handle';
                                 div.appendChild(handle);
                             } else if (interactionMode === 'crop') {
+                                const cropSrc = (v.playlists && v.playlists.length > 0) ? v.playlists[0] : v;
                                 const cropBox = document.createElement('div');
                                 cropBox.className = 'inner-crop-box';
                                 cropBox.style.position = 'absolute';
-                                cropBox.style.left = `${(v.src_x !== undefined ? v.src_x : 0) * 100}%`;
-                                cropBox.style.top = `${(v.src_y !== undefined ? v.src_y : 0) * 100}%`;
-                                cropBox.style.width = `${(v.src_w !== undefined ? v.src_w : 1) * 100}%`;
-                                cropBox.style.height = `${(v.src_h !== undefined ? v.src_h : 1) * 100}%`;
+                                cropBox.style.left = `${(cropSrc.src_x !== undefined ? cropSrc.src_x : 0) * 100}%`;
+                                cropBox.style.top = `${(cropSrc.src_y !== undefined ? cropSrc.src_y : 0) * 100}%`;
+                                cropBox.style.width = `${(cropSrc.src_w !== undefined ? cropSrc.src_w : 1) * 100}%`;
+                                cropBox.style.height = `${(cropSrc.src_h !== undefined ? cropSrc.src_h : 1) * 100}%`;
                                 cropBox.style.border = '2px dashed #ffa500';
                                 cropBox.style.background = 'rgba(255, 165, 0, 0.15)';
                                 cropBox.style.boxShadow = '0 0 8px rgba(255, 165, 0, 0.4)';
@@ -2774,6 +2825,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 const cropBox = div.querySelector('.inner-crop-box');
                 const cropHandle = div.querySelector('.crop-resize-handle');
                 if (cropBox && cropHandle) {
+                    const cropSrc = (layer.type === 'video' && item.playlists && item.playlists.length > 0) ? item.playlists[0] : item;
                     cropBox.addEventListener('mousedown', (e) => {
                         e.stopPropagation();
                         e.preventDefault();
@@ -2785,10 +2837,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         const startX = e.clientX;
                         const startY = e.clientY;
                         
-                        const currentX = item.src_x !== undefined ? item.src_x : 0;
-                        const currentY = item.src_y !== undefined ? item.src_y : 0;
-                        const currentW = item.src_w !== undefined ? item.src_w : 1;
-                        const currentH = item.src_h !== undefined ? item.src_h : 1;
+                        const currentX = cropSrc.src_x !== undefined ? cropSrc.src_x : 0;
+                        const currentY = cropSrc.src_y !== undefined ? cropSrc.src_y : 0;
+                        const currentW = cropSrc.src_w !== undefined ? cropSrc.src_w : 1;
+                        const currentH = cropSrc.src_h !== undefined ? cropSrc.src_h : 1;
                         
                         const startLeft = currentX * rect.width;
                         const startTop = currentY * rect.height;
@@ -2810,8 +2862,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                 newLeft = Math.max(0, Math.min(currentRect.width - startWidth, newLeft));
                                 newTop = Math.max(0, Math.min(currentRect.height - startHeight, newTop));
                                 
-                                item.src_x = parseFloat((newLeft / currentRect.width).toFixed(2));
-                                item.src_y = parseFloat((newTop / currentRect.height).toFixed(2));
+                                cropSrc.src_x = parseFloat((newLeft / currentRect.width).toFixed(2));
+                                cropSrc.src_y = parseFloat((newTop / currentRect.height).toFixed(2));
                             } else if (isResizing) {
                                 let newWidth = startWidth + dx;
                                 let newHeight = startHeight + dy;
@@ -2869,14 +2921,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                                     newHeight = Math.max(currentRect.height * 0.05, Math.min(currentRect.height - startTop, newHeight));
                                 }
                                 
-                                item.src_w = parseFloat((newWidth / currentRect.width).toFixed(2));
-                                item.src_h = parseFloat((newHeight / currentRect.height).toFixed(2));
+                                cropSrc.src_w = parseFloat((newWidth / currentRect.width).toFixed(2));
+                                cropSrc.src_h = parseFloat((newHeight / currentRect.height).toFixed(2));
                             }
                             
-                            cropBox.style.left = `${item.src_x * 100}%`;
-                            cropBox.style.top = `${item.src_y * 100}%`;
-                            cropBox.style.width = `${item.src_w * 100}%`;
-                            cropBox.style.height = `${item.src_h * 100}%`;
+                            cropBox.style.left = `${cropSrc.src_x * 100}%`;
+                            cropBox.style.top = `${cropSrc.src_y * 100}%`;
+                            cropBox.style.width = `${cropSrc.src_w * 100}%`;
+                            cropBox.style.height = `${cropSrc.src_h * 100}%`;
                             
                             updateUIFieldsForCrop(layer.type, selectedLayer.index);
                         };
@@ -3115,7 +3167,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             if (fullConfig.videos) {
                 fullConfig.videos.forEach(v => {
                     if (v.playlists) {
-                        v.playlists = v.playlists.filter(p => p.trim() !== '');
+                        v.playlists = v.playlists.filter(p => (typeof p === 'string' ? p : (p.path || '')).trim() !== '');
                     }
                 });
             }
@@ -3224,7 +3276,8 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
         }
 
         function updateUIFieldsForCrop(type, idx) {
-            const item = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
+            const videoOrCam = type === 'video' ? fullConfig.videos[idx] : fullConfig.cameras[idx];
+            const item = (type === 'video' && videoOrCam.playlists && videoOrCam.playlists.length > 0) ? videoOrCam.playlists[0] : videoOrCam;
             const typeStr = type === 'video' ? 'videos' : 'cameras';
             ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
                 const slider = document.getElementById(`${typeStr}-${idx}-slider-${c}`);
@@ -3393,12 +3446,18 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             }
         }
 
-        let activeCropTarget = null; // { type: 'videos'|'cameras', index: i }
+        let activeCropTarget = null; // { type: 'videos'|'cameras', index: i, playlistIndex: idx }
         let currentCropCoords = { x: 0, y: 0, w: 1, h: 1 };
         
-        function openCropEditor(type, idx) {
-            activeCropTarget = { type, index: idx };
-            const item = fullConfig[type][idx];
+        function openCropEditor(type, idx, playlistIndex) {
+            activeCropTarget = { type, index: idx, playlistIndex };
+            
+            let item;
+            if (type === 'videos' && playlistIndex !== undefined) {
+                item = fullConfig.videos[idx].playlists[playlistIndex];
+            } else {
+                item = fullConfig[type][idx];
+            }
             
             const itemX = (item.src_x !== undefined && item.src_x !== null) ? Number(item.src_x) : 0.0;
             const itemY = (item.src_y !== undefined && item.src_y !== null) ? Number(item.src_y) : 0.0;
@@ -3412,7 +3471,12 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             
             const titleEl = document.getElementById('cropModalTitle');
             if (titleEl) {
-                titleEl.textContent = `Visual Crop Editor - ${type === 'videos' ? 'Video Player' : 'Camera Stream'} Slot #${idx}`;
+                if (type === 'videos' && playlistIndex !== undefined) {
+                    const filename = item.path ? item.path.split('/').pop() : `Item #${playlistIndex}`;
+                    titleEl.textContent = `Visual Crop Editor - Video Player Slot #${idx}, File: ${filename}`;
+                } else {
+                    titleEl.textContent = `Visual Crop Editor - ${type === 'videos' ? 'Video Player' : 'Camera Stream'} Slot #${idx}`;
+                }
             }
             
             const modal = document.getElementById('cropModal');
@@ -3423,11 +3487,16 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             // Resolve preview video path
             let previewPath = '';
             if (type === 'videos') {
-                const playlist = item.playlists || [];
-                for (const path of playlist) {
-                    if (path && path.trim() !== '') {
-                        previewPath = path;
-                        break;
+                if (playlistIndex !== undefined) {
+                    previewPath = item.path || '';
+                } else {
+                    const playlist = fullConfig.videos[idx].playlists || [];
+                    for (const p of playlist) {
+                        const pathStr = typeof p === 'string' ? p : p.path;
+                        if (pathStr && pathStr.trim() !== '') {
+                            previewPath = pathStr;
+                            break;
+                        }
                     }
                 }
             } else if (type === 'cameras') {
@@ -3435,9 +3504,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 if (fullConfig.videos) {
                     for (const v of fullConfig.videos) {
                         const playlist = v.playlists || [];
-                        for (const path of playlist) {
-                            if (path && path.trim() !== '') {
-                                previewPath = path;
+                        for (const p of playlist) {
+                            const pathStr = typeof p === 'string' ? p : p.path;
+                            if (pathStr && pathStr.trim() !== '') {
+                                previewPath = pathStr;
                                 break;
                             }
                         }
@@ -3606,25 +3676,35 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             }
             
             if (apply && activeCropTarget) {
-                const { type, index } = activeCropTarget;
-                const item = fullConfig[type][index];
+                const { type, index, playlistIndex } = activeCropTarget;
+                
+                let item;
+                if (type === 'videos' && playlistIndex !== undefined) {
+                    item = fullConfig.videos[index].playlists[playlistIndex];
+                } else {
+                    item = fullConfig[type][index];
+                }
+                
                 item.src_x = currentCropCoords.x;
                 item.src_y = currentCropCoords.y;
                 item.src_w = currentCropCoords.w;
                 item.src_h = currentCropCoords.h;
                 
-                // Sync to sliders
-                ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
-                    const slider = document.getElementById(`${type}-${index}-slider-${c}`);
-                    if (slider) {
-                        slider.value = item[c];
-                    }
-                    const label = document.getElementById(`${type}-${index}-val-${c}`);
-                    if (label) {
-                        label.textContent = ((item[c] !== undefined && item[c] !== null) ? Number(item[c]) : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0)).toFixed(2);
-                    }
-                });
+                // Sync to sliders/mockup if editing camera or first playlist item
+                if (type !== 'videos' || playlistIndex === undefined || playlistIndex === 0) {
+                    ['src_x', 'src_y', 'src_w', 'src_h'].forEach(c => {
+                        const slider = document.getElementById(`${type}-${index}-slider-${c}`);
+                        if (slider) {
+                            slider.value = item[c];
+                        }
+                        const label = document.getElementById(`${type}-${index}-val-${c}`);
+                        if (label) {
+                            label.textContent = ((item[c] !== undefined && item[c] !== null) ? Number(item[c]) : (c === 'src_w' || c === 'src_h' ? 1.0 : 0.0)).toFixed(2);
+                        }
+                    });
+                }
                 
+                updateLayoutPreview();
                 showToast('Crop Coordinates Applied', 'Successfully mapped to input fields.', 'success');
             }
             

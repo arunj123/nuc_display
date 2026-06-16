@@ -30,6 +30,8 @@ extern "C" {
 
 namespace nuc_display::modules {
 
+struct PlaylistItemConfig;
+
 class VideoDecoder : public MediaModule {
 public:
     VideoDecoder();
@@ -53,6 +55,7 @@ public:
 
     void rewind_stream();
     void load_playlist(const std::vector<std::string>& files);
+    void load_playlist(const std::vector<PlaylistItemConfig>& playlist);
     void next_video();
     void prev_video();
     void unload();
@@ -63,6 +66,8 @@ public:
     void set_audio_enabled(bool enabled);
     void init_audio(const std::string& device_name = "default");
     void set_paused(bool paused, double time_sec);
+
+    size_t get_current_playlist_index() const { return playlist_index_; }
 
 private:
     void cleanup_codec();

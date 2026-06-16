@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <functional>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -173,7 +174,6 @@ static bool generate_test_config() {
             "audio_enabled": false,
             "playlists": [")" << video1 << R"(", ")" << video2 << R"("],
             "x": 0.42, "y": 0.02, "w": 0.56, "h": 0.75,
-            "src_x": 0.0, "src_y": 0.0, "src_w": 1.0, "src_h": 1.0,
             "start_trigger": "s",
             "keys": {
                 "next": "n",
@@ -430,6 +430,93 @@ static void scenario_clean_shutdown(UinputInjector& inj) {
 // Main
 // ============================================================================
 
+static int parse_time_to_minutes(const std::string& time_str) {
+    int h = 0, m = 0;
+    if (std::sscanf(time_str.c_str(), "%d:%d", &h, &m) == 2) {
+        return h * 60 + m;
+    }
+    return -1;
+}
+
+static bool is_in_power_save_range(int current_min, int start_min, int end_min) {
+    if (start_min < end_min) {
+        return current_min >= start_min && current_min < end_min;
+    } else {
+        return current_min >= start_min || current_min < end_min;
+    }
+}
+
+static void check_and_wake_screen() {
+    std::string root = get_project_root();
+    std::string config_path = root + "/config.json";
+    if (!std::filesystem::exists(config_path)) {
+        std::cout << "[Test] config.json not found at " << config_path << ", skipping power save check.\n";
+        return;
+    }
+
+    std::ifstream f(config_path);
+    if (!f.is_open()) {
+        std::cerr << "[Test] Failed to open config.json at " << config_path << "\n";
+        return;
+    }
+
+    nlohmann::json j;
+    try {
+        f >> j;
+    } catch (const std::exception& e) {
+        std::cerr << "[Test] Failed to parse config.json: " << e.what() << "\n";
+        return;
+    }
+
+    if (!j.contains("power_save") || !j["power_save"].is_object()) {
+        return;
+    }
+
+    auto ps = j["power_save"];
+    bool enabled = ps.value("enabled", false);
+    if (!enabled) {
+        return;
+    }
+
+    std::string start_time = ps.value("start_time", "23:00");
+    std::string end_time = ps.value("end_time", "07:00");
+
+    auto wall_now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(wall_now);
+    struct tm *parts = std::localtime(&now_c);
+    int current_min = parts->tm_hour * 60 + parts->tm_min;
+
+    int start_min = parse_time_to_minutes(start_time);
+    int end_min = parse_time_to_minutes(end_time);
+
+    if (start_min >= 0 && end_min >= 0 && is_in_power_save_range(current_min, start_min, end_min)) {
+        std::cout << "[Test] Screen is off due to scheduled off range (" << start_time << " - " << end_time << "). Waking it up!\n";
+        
+        // 1. Unblank via fb0/blank sysfs
+        std::ofstream blank_file("/sys/class/graphics/fb0/blank");
+        if (blank_file.is_open()) {
+            blank_file << "0\n";
+            blank_file.close();
+            std::cout << "[Test] Successfully wrote 0 to /sys/class/graphics/fb0/blank\n";
+        } else {
+            std::cerr << "[Test] Failed to open /sys/class/graphics/fb0/blank (are we root?)\n";
+        }
+
+        // 2. Unblank via virtual console /dev/tty0
+        int vt_fd = open("/dev/tty0", O_WRONLY);
+        if (vt_fd >= 0) {
+            if (write(vt_fd, "\033[9;0]", 6) == 6) {
+                std::cout << "[Test] Successfully sent unblank escape sequence to /dev/tty0\n";
+            }
+            close(vt_fd);
+        } else {
+            std::cerr << "[Test] Failed to open /dev/tty0\n";
+        }
+    } else {
+        std::cout << "[Test] Display is not in power save window or power save is disabled.\n";
+    }
+}
+
 int main(int argc, char** argv) {
     std::cout << "=== NUC Display Integration Test ===\n";
     std::cout << "PID: " << getpid() << ", UID: " << getuid() << "\n";
@@ -438,6 +525,9 @@ int main(int argc, char** argv) {
         std::cerr << "ERROR: Must run as root (need uinput + DRM access).\n";
         return 1;
     }
+
+    // Check and wake screen if off due to scheduled off
+    check_and_wake_screen();
 
     // Check if the service is active and stop it to release DRM master and wake up target display
     bool service_was_active = false;

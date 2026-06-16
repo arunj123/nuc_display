@@ -740,9 +740,19 @@ int main(int argc, char** argv) {
                     }
 
                     if (!headless_mode && !videos_hidden && video_started[vi] && decoder->is_loaded()) {
+                        float sx = 0.0f;
+                        float sy = 0.0f;
+                        float sw = 1.0f;
+                        float sh = 1.0f;
+                        size_t p_idx = decoder->get_current_playlist_index();
+                        if (p_idx < v_config.playlists.size()) {
+                            sx = v_config.playlists[p_idx].src_x;
+                            sy = v_config.playlists[p_idx].src_y;
+                            sw = v_config.playlists[p_idx].src_w;
+                            sh = v_config.playlists[p_idx].src_h;
+                        }
                         bool playing = decoder->render(*renderer, display->egl_display(), 
-                                                       v_config.src_x, v_config.src_y,
-                                                       v_config.src_w, v_config.src_h,
+                                                       sx, sy, sw, sh,
                                                        v_config.x, v_config.y, 
                                                        v_config.w, v_config.h, 
                                                        render_time_sec);

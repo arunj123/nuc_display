@@ -113,7 +113,6 @@ TEST_F(ConfigModuleTest, CreateDefaultWhenFileMissing) {
     EXPECT_FALSE(result->videos[0].audio_enabled);
     EXPECT_EQ(result->videos[0].playlists[0], "tests/sample.mp4");
     EXPECT_FLOAT_EQ(result->videos[0].x, 0.70f);
-    EXPECT_FLOAT_EQ(result->videos[0].src_w, 1.0f);
 }
 
 TEST_F(ConfigModuleTest, ParseValidConfig) {
@@ -125,8 +124,7 @@ TEST_F(ConfigModuleTest, ParseValidConfig) {
             {"enabled", false},
             {"audio_enabled", true},
             {"playlists", {"custom_video1.mp4", "custom_video2.mp4"}},
-            {"x", 0.1f}, {"y", 0.2f}, {"w", 0.3f}, {"h", 0.4f},
-            {"src_x", 0.1f}, {"src_y", 0.1f}, {"src_w", 0.8f}, {"src_h", 0.8f}
+            {"x", 0.1f}, {"y", 0.2f}, {"w", 0.3f}, {"h", 0.4f}
         }}
     };
     std::ofstream out(test_file_);
@@ -145,8 +143,42 @@ TEST_F(ConfigModuleTest, ParseValidConfig) {
     EXPECT_EQ(result->videos[0].playlists[0], "custom_video1.mp4");
     EXPECT_EQ(result->videos[0].playlists[1], "custom_video2.mp4");
     EXPECT_FLOAT_EQ(result->videos[0].x, 0.1f);
-    EXPECT_FLOAT_EQ(result->videos[0].src_x, 0.1f);
-    EXPECT_FLOAT_EQ(result->videos[0].src_w, 0.8f);
+}
+
+TEST_F(ConfigModuleTest, ParsePlaylistWithCrops) {
+    nlohmann::json j = {
+        {"location", {{"name", "Munich"}, {"lat", 48.1}, {"lon", 11.5}}},
+        {"video", {
+            {"playlists", {
+                {{"path", "video1.mp4"}, {"src_x", 0.1f}, {"src_y", 0.2f}, {"src_w", 0.7f}, {"src_h", 0.8f}},
+                "video2_compatibility.mp4"
+            }}
+        }}
+    };
+    std::ofstream out(test_file_);
+    out << j.dump();
+    out.close();
+
+    ConfigModule config;
+    auto result = config.load_or_create_config(test_file_);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_FALSE(result->videos.empty());
+    const auto& playlists = result->videos[0].playlists;
+    ASSERT_EQ(playlists.size(), 2);
+    
+    // First playlist item (object format)
+    EXPECT_EQ(playlists[0].path, "video1.mp4");
+    EXPECT_FLOAT_EQ(playlists[0].src_x, 0.1f);
+    EXPECT_FLOAT_EQ(playlists[0].src_y, 0.2f);
+    EXPECT_FLOAT_EQ(playlists[0].src_w, 0.7f);
+    EXPECT_FLOAT_EQ(playlists[0].src_h, 0.8f);
+
+    // Second playlist item (string fallback compatibility format)
+    EXPECT_EQ(playlists[1].path, "video2_compatibility.mp4");
+    EXPECT_FLOAT_EQ(playlists[1].src_x, 0.0f);
+    EXPECT_FLOAT_EQ(playlists[1].src_y, 0.0f);
+    EXPECT_FLOAT_EQ(playlists[1].src_w, 1.0f);
+    EXPECT_FLOAT_EQ(playlists[1].src_h, 1.0f);
 }
 
 TEST_F(ConfigModuleTest, HandleCorruptedJson) {
