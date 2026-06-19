@@ -2748,7 +2748,6 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         
                         div.addEventListener('click', (e) => {
                             if (!e.defaultPrevented) {
-                                switchTab('tab-videos');
                                 const acc = document.getElementById(`video-accordion-${layer.video_index}`);
                                 if (acc) acc.classList.add('open');
                             }
@@ -2806,7 +2805,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                         
                         div.addEventListener('click', (e) => {
                             if (!e.defaultPrevented) {
-                                switchTab('tab-cameras');
+                                // Keep active tab
                             }
                         });
 
@@ -2953,13 +2952,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 
                 selectedLayer = { type: layer.type, index: layer.type === 'video' ? layer.video_index : layer.camera_index };
                 
-                // Switch tabs/accordions on selection
+                // Switch accordions on selection (keep active tab)
                 if (layer.type === 'video') {
-                    switchTab('tab-videos');
                     const acc = document.getElementById(`video-accordion-${layer.video_index}`);
                     if (acc) acc.classList.add('open');
-                } else if (layer.type === 'camera') {
-                    switchTab('tab-cameras');
                 }
                 
                 const wasSelected = isSelected;
