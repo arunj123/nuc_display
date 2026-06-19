@@ -428,6 +428,14 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
         }
 
+        #mockupLayersContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
         .mockup-layer {
             position: absolute;
             display: flex;
@@ -442,6 +450,10 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             transition: all 0.2s ease;
             cursor: pointer;
+        }
+
+        .mockup-layer.dragging {
+            transition: none !important;
         }
 
         .mockup-layer span {
@@ -2949,6 +2961,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 if (e.target.closest('.inner-crop-box')) return;
                 
                 e.preventDefault(); // Prevent text selection and browser default drag
+                div.classList.add('dragging');
                 
                 selectedLayer = { type: layer.type, index: layer.type === 'video' ? layer.video_index : layer.camera_index };
                 
@@ -3086,6 +3099,7 @@ static const std::string HTML_CONSOLE = R"html(<!DOCTYPE html>
                 };
                 
                 const onMouseUp = (upEv) => {
+                    div.classList.remove('dragging');
                     document.removeEventListener('mousemove', onMouseMove);
                     document.removeEventListener('mouseup', onMouseUp);
                     
