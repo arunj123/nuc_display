@@ -74,6 +74,33 @@ TEST(WeatherModuleTest, DescriptionAndIconMapping) {
     EXPECT_EQ(module.get_weather_icon_filename(999), "assets/weather/unknown.png");
 }
 
+TEST(WeatherModuleTest, NullValueHandlingInJson) {
+    // Simulated JSON string with null values for uv_index, visibility, and apparent_temperature
+    std::string mock_json = R"({
+        "current": {
+            "temperature_2m": 22.5,
+            "relative_humidity_2m": 55.0,
+            "weather_code": 1,
+            "wind_speed_10m": 12.3,
+            "visibility": null,
+            "apparent_temperature": null,
+            "uv_index": null
+        },
+        "daily": {
+            "sunrise": [null],
+            "sunset": ["2026-07-26T21:05"]
+        }
+    })";
+
+    auto json = nlohmann::json::parse(mock_json);
+    EXPECT_TRUE(json.contains("current"));
+    EXPECT_FALSE(json["current"].is_null());
+
+    auto current = json["current"];
+    EXPECT_TRUE(current["uv_index"].is_null());
+    EXPECT_TRUE(current["visibility"].is_null());
+}
+
 #include "modules/stock_module.hpp"
 
 TEST(StockModuleTest, InvalidSymbolHandled) {

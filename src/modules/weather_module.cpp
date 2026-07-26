@@ -48,13 +48,21 @@ static std::string format_uptime(double seconds_double) {
     return ss.str();
 }
 
+template <typename T>
+static T safe_get(const nlohmann::json& j, const std::string& key, T default_val) {
+    if (j.contains(key) && !j[key].is_null()) {
+        try {
+            return j[key].get<T>();
+        } catch (...) {
+            return default_val;
+        }
+    }
+    return default_val;
+}
+
 WeatherModule::WeatherModule() {}
 
-WeatherModule::~WeatherModule() {
-    if (curl_handle_) {
-        curl_easy_cleanup(curl_handle_);
-    }
-}
+WeatherModule::~WeatherModule() {}
 
 size_t WeatherModule::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -62,12 +70,9 @@ size_t WeatherModule::WriteCallback(void* contents, size_t size, size_t nmemb, v
 }
 
 std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(float lat, float lon, const std::string& location_name) {
-    if (!curl_handle_) {
-        curl_handle_ = curl_easy_init();
-    }
-    if (!curl_handle_) return std::unexpected(WeatherError::NetworkError);
+    CURL* curl = curl_easy_init();
+    if (!curl) return std::unexpected(WeatherError::NetworkError);
 
-    CURLcode res;
     std::string readBuffer;
 
     std::stringstream url;
@@ -77,48 +82,54 @@ std::expected<WeatherData, WeatherError> WeatherModule::fetch_current_weather(fl
         << "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,apparent_temperature,uv_index"
         << "&daily=sunrise,sunset&timezone=auto";
 
-    curl_easy_reset(curl_handle_);
-    curl_easy_setopt(curl_handle_, CURLOPT_URL, url.str().c_str());
-    curl_easy_setopt(curl_handle_, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl_handle_, CURLOPT_WRITEDATA, &readBuffer);
-    curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_URL, url.str().c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
-    res = curl_easy_perform(curl_handle_);
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        std::cerr << "CURL Error: " << curl_easy_strerror(res) << "\n";
+        std::cerr << "[WeatherModule] CURL Error: " << curl_easy_strerror(res) << "\n";
         return std::unexpected(WeatherError::NetworkError);
     }
 
     try {
         auto json = nlohmann::json::parse(readBuffer);
+        if (!json.contains("current") || json["current"].is_null()) {
+            return std::unexpected(WeatherError::ParseError);
+        }
         auto current = json["current"];
-        auto daily = json["daily"];
+        auto daily = json.contains("daily") ? json["daily"] : nlohmann::json::object();
 
         WeatherData data;
-        data.temperature = current.value("temperature_2m", 0.0f);
-        data.humidity    = current.value("relative_humidity_2m", 0.0f);
-        data.wind_speed  = current.value("wind_speed_10m", 0.0f);
-        data.visibility  = current.value("visibility", 0.0f);
-        data.feels_like  = current.value("apparent_temperature", 0.0f);
-        data.uv_index    = current.value("uv_index", 0.0f);
-        data.weather_code = current.value("weather_code", 0);
+        data.temperature = safe_get<float>(current, "temperature_2m", 0.0f);
+        data.humidity    = safe_get<float>(current, "relative_humidity_2m", 0.0f);
+        data.wind_speed  = safe_get<float>(current, "wind_speed_10m", 0.0f);
+        data.visibility  = safe_get<float>(current, "visibility", 0.0f);
+        data.feels_like  = safe_get<float>(current, "apparent_temperature", 0.0f);
+        data.uv_index    = safe_get<float>(current, "uv_index", 0.0f);
+        data.weather_code = safe_get<int>(current, "weather_code", 0);
         data.description = get_weather_description(data.weather_code);
         data.icon_path   = get_weather_icon_filename(data.weather_code);
         data.city        = location_name; // Dynamically resolved Name
         
-        if (daily.contains("sunrise") && daily["sunrise"].is_array() && !daily["sunrise"].empty()) {
+        if (daily.contains("sunrise") && daily["sunrise"].is_array() && !daily["sunrise"].empty() && !daily["sunrise"][0].is_null()) {
             std::string sr = daily["sunrise"][0];
             if (sr.length() >= 5) data.sunrise = sr.substr(sr.length() - 5);
         }
-        if (daily.contains("sunset") && daily["sunset"].is_array() && !daily["sunset"].empty()) {
+        if (daily.contains("sunset") && daily["sunset"].is_array() && !daily["sunset"].empty() && !daily["sunset"][0].is_null()) {
             std::string ss = daily["sunset"][0];
             if (ss.length() >= 5) data.sunset = ss.substr(ss.length() - 5);
         }
 
         return data;
     } catch (const nlohmann::json::exception& e) {
-        std::cerr << "JSON Parse Error: " << e.what() << "\n";
+        std::cerr << "[WeatherModule] JSON Parse Error: " << e.what() << "\n";
         return std::unexpected(WeatherError::ParseError);
     }
 }
